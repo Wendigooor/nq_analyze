@@ -1,0 +1,5 @@
+Midnight Open Snap Overall Statistics
+Analysis period: 2021-05-03 - 2025-05-09
+Total days: 1040
+Total TMO touches: 724 (69.62%)
+Total snap backs: 403 (55.66% of touches)

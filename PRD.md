@@ -189,4 +189,34 @@ Experiment with different values for `C0_C1_RELATIVE_HEIGHT_THRESHOLD` and `C1_R
 *   **Review AI Output:** Always review code generated or modified by AI to ensure it meets your requirements and is correct.
 *   **Version Control (Git):** Highly recommended. Commit changes after each significant successful step.
 
+## 9. Midnight Open Snap Analysis
+
+### 9.1. Objective
+To test the hypothesis that price returns to the TMO (True Midnight Open, 00:00 ET) level within the 08:30-12:00 ET trading window with a probability of 60-80%, as mentioned in ICT methodology. The analysis will also identify "snap back" patterns (false breakouts with quick reversals) and analyze their probability of occurrence.
+
+### 9.2. Scope
+- Use existing NQ futures data from the frd_sample_futures_NQ directory (1H, 5M, 30M timeframes)
+- Identify the TMO level for each trading day
+- Analyze price touches to TMO in the specified window
+- Calculate touch probabilities by day of week (Monday-Friday)
+- Analyze distribution of touches by minute intervals (0, 15, 30, 45 minutes)
+- Identify and analyze "snap back" patterns (false breakouts with quick reversals)
+- Calculate "gap fill" statistics (when overnight gaps ≥X% are filled by ≥50%)
+- Generate visualizations of price movement around TMO levels
+- Save statistical results and plots
+
+### 9.3. Prerequisites
+- Existing data files: NQ_1hour_sample.csv, NQ_5min_sample.csv, NQ_30min_sample.csv
+- Libraries: pandas, numpy, plotly, kaleido
+- Timezone conversion support for New York Time (EST/EDT)
+
+### 9.4. Expected Deliverables
+- Python script midnight_open_analyzer.py in the midnight_open_snap directory
+- Statistical tables showing touch probabilities by day of week
+- Distribution of touches by minute intervals
+- Gap fill analysis results
+- Visualization plots of price action around TMO levels
+- CSV output files with detailed results
+- Integration with existing Swing Failure Pattern analysis for cross-pattern insights
+
 
