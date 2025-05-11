@@ -2,6 +2,10 @@
 
 Based on https://youtu.be/UJ58fe7g91c?si=9jIu6l1WMElvfSBy video
 
+data to donwload: NT market data https://drive.google.com/drive/folders/130enKE2NMg5HriMu6VjwnZjWzPqprM3a + https://drive.google.com/drive/folders/1ZPmLmaUqk-DH-YXN110gpYxOfn9iiKe3 
++ https://firstratedata.com/i/futures/NQ
++ https://portaracqg.com/futures/int/enq
+
 **Version:** 1.2
 **Date:** 2025-05-11
 **Author/User:** 
@@ -146,6 +150,15 @@ Experiment with different values for `C0_C1_RELATIVE_HEIGHT_THRESHOLD` and `C1_R
     1.  Develop methods to match or relate patterns occurring on the 5-minute and 30-minute timeframes with those on the 1-hour timeframe (e.g., does a 5-min SFP within a 30-min SFP, which is within an H1 SFP, have a different probability?).
     2.  Use statistical methods (e.g., correlation coefficients, contingency tables) to analyze the relationship between patterns and outcomes across timeframes.
     3.  Document findings on how different timeframe interactions correlate with pattern success/failure and provide potential explanations for observed correlations.
+
+- **Risk to Reward (R:R) Analysis**
+    - **Objective:** To analyze the potential Risk to Reward ratio associated with swing failure patterns to identify potentially profitable trading opportunities.
+    - **Tasks:**
+        1.  Modify analyzer scripts to define potential Stop Loss and Target levels based on pattern characteristics (e.g., C1 high/low, C0 high/low). (Partially implemented in 1h and 5min scripts).
+        2.  Analyze price action following the pattern (after C2) within a defined number of candles to determine if the Stop Loss or Target was hit first.
+        3.  Calculate the achieved Reward and the Risk taken for each pattern occurrence.
+        4.  Incorporate R:R metrics (e.g., average R:R ratio, percentage of patterns hitting target/stop loss) into the statistical reporting for each timeframe.
+        5.  Include R:R information in the cross-timeframe correlation analysis.
 
 ### 6.5. General Statistical Correlation Analysis
 

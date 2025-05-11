@@ -11,9 +11,10 @@ import io # To capture stdout
 DATA_FILE = "frd_sample_futures_NQ/NQ_1hour_sample.csv"
 OUTPUT_DIR = "plots_swing_failures"
 RESULTS_BASE_DIR = "analysis_results"
-START_ANALYSIS_DATE = "2010-01-01" # Or as desired
+START_ANALYSIS_DATE = "2010-01-01" # Or as desired (Note: Sample data is recent)
 C0_C1_RELATIVE_HEIGHT_THRESHOLD = 0.9 # e.g., C1 height <= 0.9 * C0 height
 C1_RETRACEMENT_DEPTH_THRESHOLD = 0.5 # e.g., C1 must not retrace more than 50% into C0 against expected direction
+POST_C2_ANALYSIS_CANDLES = 5 # Number of candles to look at after C2 for R:R
 
 # --- 2. Data Loading and Preprocessing ---
 def load_data(filepath):
@@ -106,12 +107,15 @@ def is_bullish_swing_failure(c0, c1, c0_c1_relative_height_threshold, c1_retrace
     return True
 
 # --- 4. Analysis Loop ---
-def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
+def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_depth_threshold, post_c2_analysis_candles):
     results = [] # To store pattern occurrences and outcomes
-    for i in range(len(df) - 2): # Need 3 candles: c0, c1, c2
+    # Need 3 candles: c0, c1, c2, plus candles after c2 for R:R analysis
+    for i in range(len(df) - 2 - post_c2_analysis_candles):
         c0 = df.iloc[i]
         c1 = df.iloc[i+1]
         c2 = df.iloc[i+2]
+        # Get subsequent candles for R:R analysis
+        subsequent_candles = df.iloc[i+3 : i+3+post_c2_analysis_candles]
 
         # Timestamps for context
         ts0, ts1, ts2 = df.index[i], df.index[i+1], df.index[i+2]
@@ -119,18 +123,57 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
         # Get previous day's change category
         prev_1d_cat = categorize_change(df['prev_1d_change'].iloc[i])
 
+        # --- Calculate R:R related metrics ---
+        potential_stop_loss = None
+        potential_reward_excursion = None
+        hit_reward_target = False # Did price reach a simple target (e.g., C0 open)?
+        hit_stop_loss = False # Did price hit the stop loss before the reward target?
+
         # Bearish SFP
         if is_bearish_swing_failure(c0, c1, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
             swept_mid = c2['low'] <= c1['low']
             swept_first = c2['low'] <= c0['low']
             swept_open = c2['low'] <= c0['open']
+
+            # Calculate potential Stop Loss (distance from C2 close to C1 high)
+            potential_stop_loss = c1['high'] - c2['close'] if c1['high'] > c2['close'] else 0
+
+            # Calculate potential Reward Excursion (max drop after C2)
+            if not subsequent_candles.empty:
+                min_low_after_c2 = subsequent_candles['low'].min()
+                potential_reward_excursion = c2['close'] - min_low_after_c2 if c2['close'] > min_low_after_c2 else 0
+
+                # Check if a simple target (e.g., C0 open) was hit before stop loss (C1 high)
+                # This is a simplified check. A more accurate check would involve iterating candle by candle.
+                target_price = c0['open']
+                stop_loss_price = c1['high']
+
+                # Check if target was hit
+                if any(subsequent_candles['low'] <= target_price):
+                     hit_reward_target = True
+
+                # Check if stop loss was hit
+                if any(subsequent_candles['high'] >= stop_loss_price):
+                     hit_stop_loss = True
+
+                # Refine hit_reward_target and hit_stop_loss by checking order of events
+                # A more accurate check would involve iterating candle by candle and comparing hit times.
+                # For now, a simplified approach: if both are hit in the window, check which *would* be hit first based on price levels
+                # Or, as a conservative approach, assume stop loss if both are hit (or overlapping within the same candle)
+                # The current boolean flags already represent if the levels were touched. To know which was hit *first* requires iterating.
+                # Let's keep the simple boolean check for now and refine this if needed.
+
             results.append({
                 'timestamp': ts0, 'type': 'bearish', 'hour_c0': c0['hour'],
                 'prev_1d_cat': prev_1d_cat,
                 'c0_o':c0['open'], 'c0_h':c0['high'], 'c0_l':c0['low'], 'c0_c':c0['close'],
                 'c1_o':c1['open'], 'c1_h':c1['high'], 'c1_l':c1['low'], 'c1_c':c1['close'],
                 'c2_o':c2['open'], 'c2_h':c2['high'], 'c2_l':c2['low'], 'c2_c':c2['close'],
-                'swept_mid': swept_mid, 'swept_first': swept_first, 'swept_open': swept_open
+                'swept_mid': swept_mid, 'swept_first': swept_first, 'swept_open': swept_open,
+                'potential_stop_loss': potential_stop_loss,
+                'potential_reward_excursion': potential_reward_excursion,
+                'hit_reward_target': hit_reward_target,
+                'hit_stop_loss': hit_stop_loss
             })
 
         # Bullish SFP
@@ -138,14 +181,47 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
             swept_mid = c2['high'] >= c1['high']
             swept_first = c2['high'] >= c0['high']
             swept_open = c2['high'] >= c0['open'] # Assuming target is C0 open for bullish too
+
+            # Calculate potential Stop Loss (distance from C2 close to C1 low)
+            potential_stop_loss = c2['close'] - c1['low'] if c2['close'] > c1['low'] else 0
+
+            # Calculate potential Reward Excursion (max rise after C2)
+            if not subsequent_candles.empty:
+                max_high_after_c2 = subsequent_candles['high'].max()
+                potential_reward_excursion = max_high_after_c2 - c2['close'] if max_high_after_c2 > c2['close'] else 0
+
+                # Check if a simple target (e.g., C0 open) was hit before stop loss (C1 low)
+                target_price = c0['open']
+                stop_loss_price = c1['low']
+
+                # Check if target was hit
+                if any(subsequent_candles['high'] >= target_price):
+                    hit_reward_target = True
+
+                # Check if stop loss was hit
+                if any(subsequent_candles['low'] <= stop_loss_price):
+                    hit_stop_loss = True
+
+                 # Refine hit_reward_target and hit_stop_loss by checking order of events
+                 # A more accurate check would involve iterating candle by candle and comparing hit times.
+                 # For now, a simplified approach: if both are hit in the window, check which *would* be hit first based on price levels
+                 # Or, as a conservative approach, assume stop loss if both are hit (or overlapping within the same candle)
+                 # The current boolean flags already represent if the levels were touched. To know which was hit *first* requires iterating.
+                 # Let's keep the simple boolean check for now and refine this if needed.
+
             results.append({
                 'timestamp': ts0, 'type': 'bullish', 'hour_c0': c0['hour'],
                 'prev_1d_cat': prev_1d_cat,
                 'c0_o':c0['open'], 'c0_h':c0['high'], 'c0_l':c0['low'], 'c0_c':c0['close'],
                 'c1_o':c1['open'], 'c1_h':c1['high'], 'c1_l':c1['low'], 'c1_c':c1['close'],
                 'c2_o':c2['open'], 'c2_h':c2['high'], 'c2_l':c2['low'], 'c2_c':c2['close'],
-                'swept_mid': swept_mid, 'swept_first': swept_first, 'swept_open': swept_open
+                'swept_mid': swept_mid, 'swept_first': swept_first, 'swept_open': swept_open,
+                'potential_stop_loss': potential_stop_loss,
+                'potential_reward_excursion': potential_reward_excursion,
+                 'hit_reward_target': hit_reward_target,
+                 'hit_stop_loss': hit_stop_loss
             })
+
     return pd.DataFrame(results)
 
 # --- 5. Statistics Aggregation & Output ---
@@ -177,20 +253,22 @@ def aggregate_and_print_stats(results_df, output_file=None):
             bear_occurrences = len(bear_patterns)
             bull_occurrences = len(bull_patterns)
 
-            # Need total candles for the hour and category to calculate occurrences / total
-            # This requires checking the original dataframe based on hour and category
-            # We'll need to pass the original df to this function or recalculate/store categories for all candles
-            # For simplicity now, let's just report occurrences and hit rates within the found patterns for this category/hour
-            # A more detailed analysis would require accounting for all candles in that category/hour.
-
             if bear_occurrences > 0:
                 total_bear_patterns_in_cat = len(results_df[(results_df['type'] == 'bearish') & (results_df['prev_1d_cat'] == category)])
                 bear_hit_rate = (bear_occurrences / total_bear_patterns_in_cat) * 100 if total_bear_patterns_in_cat > 0 else 0
                 bear_swept_mid_pct = (bear_patterns['swept_mid'].sum() / bear_occurrences) * 100
                 bear_swept_first_pct = (bear_patterns['swept_first'].sum() / bear_occurrences) * 100
                 bear_swept_open_pct = (bear_patterns['swept_open'].sum() / bear_occurrences) * 100
+
+                # Calculate R:R metrics for bearish patterns
+                bear_avg_sl = bear_patterns['potential_stop_loss'].mean() if bear_occurrences > 0 else 0
+                bear_avg_re = bear_patterns['potential_reward_excursion'].mean() if bear_occurrences > 0 else 0
+                bear_hit_target_pct = (bear_patterns['hit_reward_target'].sum() / bear_occurrences) * 100 if bear_occurrences > 0 else 0
+                bear_hit_sl_pct = (bear_patterns['hit_stop_loss'].sum() / bear_occurrences) * 100 if bear_occurrences > 0 else 0
+
             else:
                 bear_hit_rate, bear_swept_mid_pct, bear_swept_first_pct, bear_swept_open_pct = 0,0,0,0
+                bear_avg_sl, bear_avg_re, bear_hit_target_pct, bear_hit_sl_pct = 0,0,0,0
 
             if bull_occurrences > 0:
                 total_bull_patterns_in_cat = len(results_df[(results_df['type'] == 'bullish') & (results_df['prev_1d_cat'] == category)])
@@ -198,8 +276,16 @@ def aggregate_and_print_stats(results_df, output_file=None):
                 bull_swept_mid_pct = (bull_patterns['swept_mid'].sum() / bull_occurrences) * 100
                 bull_swept_first_pct = (bull_patterns['swept_first'].sum() / bull_occurrences) * 100
                 bull_swept_open_pct = (bull_patterns['swept_open'].sum() / bull_occurrences) * 100
+
+                 # Calculate R:R metrics for bullish patterns
+                bull_avg_sl = bull_patterns['potential_stop_loss'].mean() if bull_occurrences > 0 else 0
+                bull_avg_re = bull_patterns['potential_reward_excursion'].mean() if bull_occurrences > 0 else 0
+                bull_hit_target_pct = (bull_patterns['hit_reward_target'].sum() / bull_occurrences) * 100 if bull_occurrences > 0 else 0
+                bull_hit_sl_pct = (bull_patterns['hit_stop_loss'].sum() / bull_occurrences) * 100 if bull_occurrences > 0 else 0
+
             else:
                 bull_hit_rate, bull_swept_mid_pct, bull_swept_first_pct, bull_swept_open_pct = 0,0,0,0
+                bull_avg_sl, bull_avg_re, bull_hit_target_pct, bull_hit_sl_pct = 0,0,0,0
 
             # Create the hour triplet string like the presenter
             h0 = hour
@@ -213,15 +299,21 @@ def aggregate_and_print_stats(results_df, output_file=None):
                     'Prev Day': category,
                     'Hours': hour_triplet_str,
                     'Bear Nr.': bear_occurrences,
-                    'Hit%': f"{bear_hit_rate:.2f}",
-                    'Mid%': f"{bear_swept_mid_pct:.2f}",
-                    '1st%': f"{bear_swept_first_pct:.2f}",
-                    'Opn%': f"{bear_swept_open_pct:.2f}",
+                    'Hit%_Mid': f"{bear_swept_mid_pct:.2f}", # Renamed for clarity
+                    'Hit%_1st': f"{bear_swept_first_pct:.2f}", # Renamed for clarity
+                    'Hit%_Opn': f"{bear_swept_open_pct:.2f}", # Renamed for clarity
+                    'Avg_SL': f"{bear_avg_sl:.2f}", # Added avg SL
+                    'Avg_RE': f"{bear_avg_re:.2f}", # Added avg RE
+                    'Hit_T%': f"{bear_hit_target_pct:.2f}", # Added Hit Target %
+                    'Hit_SL%': f"{bear_hit_sl_pct:.2f}", # Added Hit SL %
                     '| Bull Nr.': bull_occurrences,
-                    'Hit%_bull': f"{bull_hit_rate:.2f}",
-                    'Mid%_bull': f"{bull_swept_mid_pct:.2f}",
-                    '1st%_bull': f"{bull_swept_first_pct:.2f}",
-                    'Opn%_bull': f"{bull_swept_open_pct:.2f}"
+                    'Hit%_Mid_bull': f"{bull_swept_mid_pct:.2f}", # Renamed for clarity
+                    'Hit%_1st_bull': f"{bull_swept_first_pct:.2f}", # Renamed for clarity
+                    'Hit%_Opn_bull': f"{bull_swept_open_pct:.2f}", # Renamed for clarity
+                    'Avg_SL_bull': f"{bull_avg_sl:.2f}", # Added avg SL
+                    'Avg_RE_bull': f"{bull_avg_re:.2f}", # Added avg RE
+                    'Hit_T%_bull': f"{bull_hit_target_pct:.2f}", # Added Hit Target %
+                    'Hit_SL%_bull': f"{bull_hit_sl_pct:.2f}" # Added Hit SL %
                 })
 
     summary_df = pd.DataFrame(stats_summary)
@@ -300,7 +392,7 @@ if __name__ == "__main__":
 
     # Run swing failure analysis and save results
     swing_failure_results_filepath = os.path.join(current_results_dir, "swing_failure_stats.txt")
-    pattern_results = analyze_swing_failures(df, current_c0_c1_height_threshold, current_c1_retracement_depth_threshold)
+    pattern_results = analyze_swing_failures(df, current_c0_c1_height_threshold, current_c1_retracement_depth_threshold, POST_C2_ANALYSIS_CANDLES)
     aggregate_and_print_stats(pattern_results, swing_failure_results_filepath)
 
     # Save the pattern_results DataFrame to a file for later analysis

@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import glob
+import numpy as np
 
 # --- Configuration ---
 RESULTS_BASE_DIR_1H = "analysis_results"
@@ -87,6 +88,11 @@ def analyze_cross_timeframe_correlation(df_1h, df_30min, df_5min):
                 'nested_5min_bullish_in_1h': has_5min_bullish_in_1h,
                 'nested_30min_count': len(nested_30min_patterns),
                 'nested_5min_count_in_1h': len(nested_5min_patterns_in_1h),
+                # Add R:R related columns
+                '1h_hit_target': pattern_1h['hit_target'],
+                '1h_hit_stop_loss': pattern_1h['hit_stop_loss'],
+                '1h_reward_achieved': pattern_1h['reward_achieved'],
+                '1h_risk_taken': pattern_1h['risk_taken']
             })
 
     correlation_df_1h = pd.DataFrame(correlation_results)
@@ -123,6 +129,11 @@ def analyze_cross_timeframe_correlation(df_1h, df_30min, df_5min):
                 'nested_5min_bearish_in_30min': has_5min_bearish_in_30min,
                 'nested_5min_bullish_in_30min': has_5min_bullish_in_30min,
                 'nested_5min_count_in_30min': len(nested_5min_patterns_in_30min),
+                # Add R:R related columns
+                '30min_hit_target': pattern_30min['hit_target'],
+                '30min_hit_stop_loss': pattern_30min['hit_stop_loss'],
+                '30min_reward_achieved': pattern_30min['reward_achieved'],
+                '30min_risk_taken': pattern_30min['risk_taken']
             })
     correlation_df_30min = pd.DataFrame(correlation_results_30min)
 
@@ -156,7 +167,17 @@ def analyze_cross_timeframe_correlation(df_1h, df_30min, df_5min):
                         hit_rate_mid = (categorized_patterns['1h_swept_mid'].sum() / count) * 100
                         hit_rate_first = (categorized_patterns['1h_swept_first'].sum() / count) * 100
                         hit_rate_open = (categorized_patterns['1h_swept_open'].sum() / count) * 100
-                        print(f"    - {category}: Count = {count}, Hit% (Mid, 1st, Opn) = ({hit_rate_mid:.2f}, {hit_rate_first:.2f}, {hit_rate_open:.2f})")
+                        
+                        # Calculate R:R stats
+                        target_hit_count = categorized_patterns['1h_hit_target'].sum()
+                        stop_loss_hit_count = categorized_patterns['1h_hit_stop_loss'].sum()
+                        target_hit_pct = (target_hit_count / count) * 100
+                        stop_loss_hit_pct = (stop_loss_hit_count / count) * 100
+                        # Calculate average R:R for patterns that hit target
+                        avg_rr = (categorized_patterns[categorized_patterns['1h_hit_target'] == True]['reward_achieved'] / categorized_patterns[categorized_patterns['1h_hit_target'] == True]['risk_taken']).replace([np.inf, -np.inf], np.nan).mean()
+                        avg_rr = 0 if pd.isna(avg_rr) else avg_rr # Handle NaN if no targets were hit
+
+                        print(f"    - {category}: Count = {count}, Hit% (Mid, 1st, Opn) = ({hit_rate_mid:.2f}, {hit_rate_first:.2f}, {hit_rate_open:.2f}), R:R (Target%, Stop%, Avg) = ({target_hit_pct:.2f}, {stop_loss_hit_pct:.2f}, {avg_rr:.2f})")
 
     else:
         print("No 1-hour patterns found for detailed cross-timeframe analysis.")
@@ -185,7 +206,17 @@ def analyze_cross_timeframe_correlation(df_1h, df_30min, df_5min):
                          hit_rate_mid = (categorized_patterns['30min_swept_mid'].sum() / count) * 100
                          hit_rate_first = (categorized_patterns['30min_swept_first'].sum() / count) * 100
                          hit_rate_open = (categorized_patterns['30min_swept_open'].sum() / count) * 100
-                         print(f"    - {category}: Count = {count}, Hit% (Mid, 1st, Opn) = ({hit_rate_mid:.2f}, {hit_rate_first:.2f}, {hit_rate_open:.2f})")
+
+                         # Calculate R:R stats for 30min patterns
+                         target_hit_count = categorized_patterns['30min_hit_target'].sum()
+                         stop_loss_hit_count = categorized_patterns['30min_hit_stop_loss'].sum()
+                         target_hit_pct = (target_hit_count / count) * 100
+                         stop_loss_hit_pct = (stop_loss_hit_count / count) * 100
+                         # Calculate average R:R for patterns that hit target
+                         avg_rr = (categorized_patterns[categorized_patterns['30min_hit_target'] == True]['reward_achieved'] / categorized_patterns[categorized_patterns['30min_hit_target'] == True]['risk_taken']).replace([np.inf, -np.inf], np.nan).mean()
+                         avg_rr = 0 if pd.isna(avg_rr) else avg_rr # Handle NaN if no targets were hit
+
+                         print(f"    - {category}: Count = {count}, Hit% (Mid, 1st, Opn) = ({hit_rate_mid:.2f}, {hit_rate_first:.2f}, {hit_rate_open:.2f}), R:R (Target%, Stop%, Avg) = ({target_hit_pct:.2f}, {stop_loss_hit_pct:.2f}, {avg_rr:.2f})")
 
     else:
         print("No 30-minute patterns found for detailed cross-timeframe analysis.")
