@@ -3,10 +3,14 @@ import numpy as np
 import plotly.graph_objects as go # For plotting
 from plotly.subplots import make_subplots # For plotting
 import os # For creating plot directories
+import datetime # For timestamping results
+import sys # To capture stdout
+import io # To capture stdout
 
 # --- 1. Configuration ---
 DATA_FILE = "frd_sample_futures_NQ/NQ_1hour_sample.csv"
 OUTPUT_DIR = "plots_swing_failures"
+RESULTS_BASE_DIR = "analysis_results"
 START_ANALYSIS_DATE = "2010-01-01" # Or as desired
 C0_C1_RELATIVE_HEIGHT_THRESHOLD = 0.9 # e.g., C1 height <= 0.9 * C0 height
 C1_RETRACEMENT_DEPTH_THRESHOLD = 0.5 # e.g., C1 must not retrace more than 50% into C0 against expected direction
@@ -38,7 +42,7 @@ def load_data(filepath):
     return df
 
 # --- 3. Pattern Definition Functions ---
-def is_bearish_swing_failure(c0, c1):
+def is_bearish_swing_failure(c0, c1, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
     """
     c0: pandas Series for the first candle
     c1: pandas Series for the second candle
@@ -50,26 +54,15 @@ def is_bearish_swing_failure(c0, c1):
     c0_height = abs(c0['open'] - c0['close'])
     c1_height = abs(c1['open'] - c1['close'])
 
-    # Use C1_RETRACEMENT_DEPTH_THRESHOLD for C1 low condition
-    # Original PRD condition: c1["low"] > c0["low"] + 0.2 * c0_height
-    # Presenter/User refined: c1['low'] > c0['open']
-    # Let's use the variable to allow experimentation, mapping 0.5 threshold to C0 open check approximately
-    # A threshold of 0 means C1 low can go to C0 low. A threshold of 1 means C1 low must be >= C0 open + C0 body.
-    # We'll redefine the meaning slightly to fit the variable structure better.
-    # Let's use it to mean C1 low must be above c0['low'] + threshold * c0_height
-    # The presenter's 0.2*c0_height condition was slightly different, let's stick closer to that or the c0['open'] check.
-    # Reverting to a logic that allows using the threshold variable for the 'depth' of penetration into C0's range.
-    # For bearish, C1 low should not go too far below C0 close (or into C0 body).
-    # Let's use the variable to mean C1 low must be above c0['close'] - threshold * c0_height
-    # This way, a threshold of 0 means C1 low must be >= C0 close, and a threshold of 1 means C1 low must be >= C0 open (if C0 is bullish).
-    if not (c1['low'] > c0['close'] - C1_RETRACEMENT_DEPTH_THRESHOLD * c0_height): return False
+    # Use c1_retracement_depth_threshold for C1 low condition
+    if not (c1['low'] > c0['close'] - c1_retracement_depth_threshold * c0_height): return False
 
-    # Use C0_C1_RELATIVE_HEIGHT_THRESHOLD for C1 height condition
-    if not (c1_height <= C0_C1_RELATIVE_HEIGHT_THRESHOLD * c0_height): return False
+    # Use c0_c1_relative_height_threshold for C1 height condition
+    if not (c1_height <= c0_c1_relative_height_threshold * c0_height): return False
 
     return True
 
-def is_bullish_swing_failure(c0, c1):
+def is_bullish_swing_failure(c0, c1, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
     """
     c0: pandas Series for the first candle
     c1: pandas Series for the second candle
@@ -81,21 +74,16 @@ def is_bullish_swing_failure(c0, c1):
     c0_height = abs(c0['open'] - c0['close'])
     c1_height = abs(c1['open'] - c1['close'])
 
-    # Use C1_RETRACEMENT_DEPTH_THRESHOLD for C1 high condition
-    # Similar logic as bearish, but for bullish:
-    # C1 high must be below c0['close'] + threshold * c0_height
-    # Threshold of 0 means C1 high must be <= C0 close. Threshold of 1 means C1 high must be <= C0 open (if C0 is bearish).
-    if not (c1['high'] < c0['close'] + C1_RETRACEMENT_DEPTH_THRESHOLD * c0_height): return False
+    # Use c1_retracement_depth_threshold for C1 high condition
+    if not (c1['high'] < c0['close'] + c1_retracement_depth_threshold * c0_height): return False
 
-    # Use C0_C1_RELATIVE_HEIGHT_THRESHOLD for C1 height condition
-    # Note: The previous refinement hardcoded 0.5 for bullish C1 height.
-    # To experiment, we will now use the variable. We can set the default to 0.5.
-    if not (c1_height <= C0_C1_RELATIVE_HEIGHT_THRESHOLD * c0_height): return False
+    # Use c0_c1_relative_height_threshold for C1 height condition
+    if not (c1_height <= c0_c1_relative_height_threshold * c0_height): return False
 
     return True
 
 # --- 4. Analysis Loop ---
-def analyze_swing_failures(df):
+def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
     results = [] # To store pattern occurrences and outcomes
     for i in range(len(df) - 2): # Need 3 candles: c0, c1, c2
         c0 = df.iloc[i]
@@ -106,7 +94,7 @@ def analyze_swing_failures(df):
         ts0, ts1, ts2 = df.index[i], df.index[i+1], df.index[i+2]
 
         # Bearish SFP
-        if is_bearish_swing_failure(c0, c1):
+        if is_bearish_swing_failure(c0, c1, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
             swept_mid = c2['low'] <= c1['low']
             swept_first = c2['low'] <= c0['low']
             swept_open = c2['low'] <= c0['open']
@@ -119,7 +107,7 @@ def analyze_swing_failures(df):
             })
 
         # Bullish SFP
-        if is_bullish_swing_failure(c0, c1):
+        if is_bullish_swing_failure(c0, c1, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
             swept_mid = c2['high'] >= c1['high']
             swept_first = c2['high'] >= c0['high']
             swept_open = c2['high'] >= c0['open'] # Assuming target is C0 open for bullish too
@@ -133,13 +121,22 @@ def analyze_swing_failures(df):
     return pd.DataFrame(results)
 
 # --- 5. Statistics Aggregation & Output ---
-def aggregate_and_print_stats(results_df):
+def aggregate_and_print_stats(results_df, output_file=None):
     if results_df.empty:
-        print("No patterns found.")
+        output = "No patterns found.\n"
+        print(output)
+        if output_file:
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
+            with open(output_file, "w") as f:
+                f.write(output)
         return
 
+    # Capture print output
+    old_stdout = sys.stdout
+    redirected_output = io.StringIO()
+    sys.stdout = redirected_output
+
     # NY Time hours for aggregation (0-23)
-    # The presenter's table shows triplets like 00,01,02. We'll use the hour of C0.
     stats_summary = []
     for hour in range(24):
         hourly_patterns = results_df[results_df['hour_c0'] == hour]
@@ -151,7 +148,6 @@ def aggregate_and_print_stats(results_df):
         bull_occurrences = len(bull_patterns)
 
         if bear_occurrences > 0:
-            # Recalculate hit rate as percentage of total bearish patterns found across all hours
             total_bear_patterns = len(results_df[results_df['type'] == 'bearish'])
             bear_hit_rate = (bear_occurrences / total_bear_patterns) * 100 if total_bear_patterns > 0 else 0
             bear_swept_mid_pct = (bear_patterns['swept_mid'].sum() / bear_occurrences) * 100
@@ -161,7 +157,6 @@ def aggregate_and_print_stats(results_df):
             bear_hit_rate, bear_swept_mid_pct, bear_swept_first_pct, bear_swept_open_pct = 0,0,0,0
 
         if bull_occurrences > 0:
-            # Recalculate hit rate as percentage of total bullish patterns found across all hours
             total_bull_patterns = len(results_df[results_df['type'] == 'bullish'])
             bull_hit_rate = (bull_occurrences / total_bull_patterns) * 100 if total_bull_patterns > 0 else 0
             bull_swept_mid_pct = (bull_patterns['swept_mid'].sum() / bull_occurrences) * 100
@@ -169,7 +164,7 @@ def aggregate_and_print_stats(results_df):
             bull_swept_open_pct = (bull_patterns['swept_open'].sum() / bull_occurrences) * 100
         else:
             bull_hit_rate, bull_swept_mid_pct, bull_swept_first_pct, bull_swept_open_pct = 0,0,0,0
-        
+
         # Create the hour triplet string like the presenter
         h0 = hour
         h1 = (hour + 1) % 24
@@ -196,10 +191,21 @@ def aggregate_and_print_stats(results_df):
     print(f"Loaded {len(df)} hourly candles")
     print(summary_df.to_string(index=False))
 
+    # Restore stdout and get the captured output
+    sys.stdout = old_stdout
+    output = redirected_output.getvalue()
+    print(output) # Print to console as before
+
+    # Save output to file if output_file is provided
+    if output_file:
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        with open(output_file, "w") as f:
+            f.write(output)
+
 # --- 6. (Optional) Plotting Function ---
-def plot_pattern_example(row, filename_prefix="pattern"):
-    if not os.path.exists(OUTPUT_DIR):
-        os.makedirs(OUTPUT_DIR)
+def plot_pattern_example(row, output_dir, filename_prefix="pattern"):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
     fig = make_subplots(rows=1, cols=1)
     candles_to_plot = []
@@ -224,26 +230,48 @@ def plot_pattern_example(row, filename_prefix="pattern"):
         xaxis_rangeslider_visible=False
     )
     ts_str = row['timestamp'].strftime('%Y-%m-%d_%H-%M')
-    filepath = os.path.join(OUTPUT_DIR, f"{filename_prefix}_{row['type']}_{ts_str}.png")
+    filepath = os.path.join(output_dir, f"{filename_prefix}_{row['type']}_{ts_str}.png")
     fig.write_image(filepath)
-    # print(f"Saved plot: {filepath}")
-
 
 # --- Main Execution ---
 if __name__ == "__main__":
     df = load_data(DATA_FILE)
-    pattern_results = analyze_swing_failures(df)
-    aggregate_and_print_stats(pattern_results)
 
-    # Optional: Plot some examples
+    # Get current parameter values for filename
+    current_c0_c1_height_threshold = C0_C1_RELATIVE_HEIGHT_THRESHOLD
+    current_c1_retracement_depth_threshold = C1_RETRACEMENT_DEPTH_THRESHOLD
+
+    # Create a timestamped directory for this run's results
+    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    run_dir_name = f"height{current_c0_c1_height_threshold}_depth{current_c1_retracement_depth_threshold}_{timestamp}"
+    current_results_dir = os.path.join(RESULTS_BASE_DIR, run_dir_name)
+    os.makedirs(current_results_dir, exist_ok=True)
+
+    # Save configuration
+    config_filepath = os.path.join(current_results_dir, "configuration.txt")
+    with open(config_filepath, "w") as f:
+        f.write(f"DATA_FILE: {DATA_FILE}\n")
+        f.write(f"START_ANALYSIS_DATE: {START_ANALYSIS_DATE}\n")
+        f.write(f"C0_C1_RELATIVE_HEIGHT_THRESHOLD: {current_c0_c1_height_threshold}\n")
+        f.write(f"C1_RETRACEMENT_DEPTH_THRESHOLD: {current_c1_retracement_depth_threshold}\n")
+
+    # Run swing failure analysis and save results
+    swing_failure_results_filepath = os.path.join(current_results_dir, "swing_failure_stats.txt")
+    pattern_results = analyze_swing_failures(df, current_c0_c1_height_threshold, current_c1_retracement_depth_threshold)
+    aggregate_and_print_stats(pattern_results, swing_failure_results_filepath)
+
+    # Optional: Plot some examples within the run-specific directory
     if not pattern_results.empty:
-        print(f"\nSaving example plots to ./{OUTPUT_DIR}/ ...")
+        plots_output_dir = os.path.join(current_results_dir, "plots")
+        print(f"\nSaving example plots to ./{plots_output_dir}/ ...")
         # Plot a few bearish and bullish examples
-        bearish_examples = pattern_results[pattern_results['type'] == 'bearish'].head(5)
-        bullish_examples = pattern_results[pattern_results['type'] == 'bullish'].head(5)
+        bearish_examples = pattern_results[pattern_results['type'] == 'bearish'].head(10)
+        bullish_examples = pattern_results[pattern_results['type'] == 'bullish'].head(10)
 
         for idx, row in bearish_examples.iterrows():
-            plot_pattern_example(row, "bearish_sfp")
+            plot_pattern_example(row, plots_output_dir, "bearish_sfp")
         for idx, row in bullish_examples.iterrows():
-            plot_pattern_example(row, "bullish_sfp")
+            plot_pattern_example(row, plots_output_dir, "bullish_sfp")
         print("Example plots saved.")
+
+    # Note: Net Change Analysis results will need to be added to this directory separately or by modifying net_change_analyzer.py
