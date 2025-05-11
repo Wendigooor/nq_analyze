@@ -192,7 +192,7 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
                 'swept_mid': swept_mid, 'swept_first': swept_first, 'swept_open': swept_open,
                 'potential_stop_loss': potential_stop_loss,
                 'potential_reward_excursion': potential_reward_excursion,
-                'hit_reward_target': hit_reward_target,
+                'hit_target': hit_reward_target,
                 'hit_stop_loss': hit_stop_loss,
                 'reward_achieved': reward_achieved,
                 'risk_taken': risk_taken
@@ -258,7 +258,7 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
                 'swept_mid': swept_mid, 'swept_first': swept_first, 'swept_open': swept_open,
                 'potential_stop_loss': potential_stop_loss,
                 'potential_reward_excursion': potential_reward_excursion,
-                 'hit_reward_target': hit_reward_target,
+                 'hit_target': hit_reward_target,
                  'hit_stop_loss': hit_stop_loss,
                  'reward_achieved': reward_achieved,
                  'risk_taken': risk_taken
@@ -306,18 +306,18 @@ def aggregate_and_print_stats(results_df, output_file=None):
             bear_swept_open_pct = (bear_patterns['swept_open'].sum() / bear_occurrences) * 100
 
             # R:R Stats for Bearish Patterns
-            bear_hit_target_count = bear_patterns['hit_reward_target'].sum()
+            bear_hit_target_count = bear_patterns['hit_target'].sum()
             bear_hit_stop_loss_count = bear_patterns['hit_stop_loss'].sum()
             bear_hit_target_pct = (bear_hit_target_count / bear_occurrences) * 100 if bear_occurrences > 0 else 0
             bear_hit_stop_loss_pct = (bear_hit_stop_loss_count / bear_occurrences) * 100 if bear_occurrences > 0 else 0
             # Calculate average R:R for patterns that hit target
-            bear_avg_rr = (bear_patterns[bear_patterns['hit_reward_target'] == True]['reward_achieved'] / bear_patterns[bear_patterns['hit_reward_target'] == True]['risk_taken']).replace([np.inf, -np.inf], np.nan).mean()
+            bear_avg_rr = (bear_patterns[bear_patterns['hit_target'] == True]['reward_achieved'] / bear_patterns[bear_patterns['hit_target'] == True]['risk_taken']).replace([np.inf, -np.inf], np.nan).mean()
             bear_avg_rr = 0 if pd.isna(bear_avg_rr) else bear_avg_rr # Handle NaN if no targets were hit
 
         else:
             bear_hit_rate, bear_swept_mid_pct, bear_swept_first_pct, bear_swept_open_pct = 0,0,0,0
-            bear_hit_target_count, bear_hit_stop_loss_count = 0,0
-            bear_avg_rr = 0
+            # Initialize R:R stats for cases with no occurrences
+            bear_hit_target_pct, bear_hit_stop_loss_pct, bear_avg_rr = 0,0,0
 
         if bull_occurrences > 0:
             # Hit rate as percentage of total bullish patterns found across all hours
@@ -328,18 +328,18 @@ def aggregate_and_print_stats(results_df, output_file=None):
             bull_swept_open_pct = (bull_patterns['swept_open'].sum() / bull_occurrences) * 100
 
              # R:R Stats for Bullish Patterns
-            bull_hit_target_count = bull_patterns['hit_reward_target'].sum()
+            bull_hit_target_count = bull_patterns['hit_target'].sum()
             bull_hit_stop_loss_count = bull_patterns['hit_stop_loss'].sum()
             bull_hit_target_pct = (bull_hit_target_count / bull_occurrences) * 100 if bull_occurrences > 0 else 0
             bull_hit_stop_loss_pct = (bull_hit_stop_loss_count / bull_occurrences) * 100 if bull_occurrences > 0 else 0
             # Calculate average R:R for patterns that hit target
-            bull_avg_rr = (bull_patterns[bull_patterns['hit_reward_target'] == True]['reward_achieved'] / bull_patterns[bull_patterns['hit_reward_target'] == True]['risk_taken']).replace([np.inf, -np.inf], np.nan).mean()
+            bull_avg_rr = (bull_patterns[bull_patterns['hit_target'] == True]['reward_achieved'] / bull_patterns[bull_patterns['hit_target'] == True]['risk_taken']).replace([np.inf, -np.inf], np.nan).mean()
             bull_avg_rr = 0 if pd.isna(bull_avg_rr) else bull_avg_rr # Handle NaN if no targets were hit
 
         else:
             bull_hit_rate, bull_swept_mid_pct, bull_swept_first_pct, bull_swept_open_pct = 0,0,0,0
-            bull_hit_target_count, bull_hit_stop_loss_count = 0,0
-            bull_avg_rr = 0
+            # Initialize R:R stats for cases with no occurrences
+            bull_hit_target_pct, bull_hit_stop_loss_pct, bull_avg_rr = 0,0,0
 
         # Create the hour triplet string - Note: this is still based on C0 hour, not a 30min interval triplet
         h0 = hour
@@ -435,15 +435,15 @@ def plot_pattern_example(row, output_dir, filename_prefix="pattern"):
 
     fig.add_trace(go.Scatter(
         x=[c0_time], y=[row['c0_h'] + (row['c0_h'] - row['c0_l'])*0.1], mode='text', text=['C0'],
-        textposition='top center', mode='markers+text', marker=dict(color='blue', size=10),
+        textposition='top center', marker=dict(color='blue', size=10),
         name='C0'), row=1, col=1)
     fig.add_trace(go.Scatter(
         x=[c1_time], y=[row['c1_h'] + (row['c1_h'] - row['c1_l'])*0.1], mode='text', text=['C1'],
-        textposition='top center', mode='markers+text', marker=dict(color='orange', size=10),
+        textposition='top center', marker=dict(color='orange', size=10),
         name='C1'), row=1, col=1)
     fig.add_trace(go.Scatter(
         x=[c2_time], y=[row['c2_h'] + (row['c2_h'] - row['c2_l'])*0.1], mode='text', text=['C2'],
-        textposition='top center', mode='markers+text', marker=dict(color='green', size=10),
+        textposition='top center', marker=dict(color='green', size=10),
         name='C2'), row=1, col=1)
 
     # Add R:R lines if calculated
@@ -460,8 +460,8 @@ def plot_pattern_example(row, output_dir, filename_prefix="pattern"):
                       name='Stop Loss')
 
         # For bearish, target is C0 low. For bullish, target is C0 high (or open).
-        target_price = row['c0_l'] if row['type'] == 'bearish' else row['c0_open'] # Using C0 open as a simple target
-        target_color = 'green' if row['hit_reward_target'] else 'gray'
+        target_price = row['c0_l'] if row['type'] == 'bearish' else row['c0_o'] # Using C0 open as a simple target
+        target_color = 'green' if row['hit_target'] else 'gray'
         fig.add_shape(type="line",
                       x0=c2_time,
                       y0=target_price,
@@ -472,7 +472,7 @@ def plot_pattern_example(row, output_dir, filename_prefix="pattern"):
 
     # Update layout
     pattern_type = row['type'].capitalize()
-    hit_status = "Target Hit" if row['hit_reward_target'] else ("Stop Loss Hit" if row['hit_stop_loss'] else "No Hit - Outside Window")
+    hit_status = "Target Hit" if row['hit_target'] else ("Stop Loss Hit" if row['hit_stop_loss'] else "No Hit - Outside Window")
     rr_ratio = (row['reward_achieved'] / row['risk_taken']) if row['risk_taken'] > 0 else 0
 
     fig.update_layout(
@@ -491,47 +491,43 @@ def plot_pattern_example(row, output_dir, filename_prefix="pattern"):
 
 # --- Main Execution ---
 if __name__ == "__main__":
+    print("Loading data...")
     df = load_data(DATA_FILE)
+    print(f"Data loaded. Shape: {df.shape}")
 
-    # Get current parameter values for filename
-    current_c0_c1_height_threshold = C0_C1_RELATIVE_HEIGHT_THRESHOLD
-    current_c1_retracement_depth_threshold = C1_RETRACEMENT_DEPTH_THRESHOLD
+    print("Analyzing for Swing Failure Patterns...")
+    # Pass thresholds and post_c2_analysis_candles to the analysis function
+    raw_patterns_df = analyze_swing_failures(df, C0_C1_RELATIVE_HEIGHT_THRESHOLD, C1_RETRACEMENT_DEPTH_THRESHOLD, POST_C2_ANALYSIS_CANDLES)
+    print(f"Analysis complete. Found {len(raw_patterns_df)} patterns.")
 
-    # Create a timestamped directory for this run's results
-    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    run_dir_name = f"30min_height{current_c0_c1_height_threshold}_depth{current_c1_retracement_depth_threshold}_{timestamp}"
-    current_results_dir = os.path.join(RESULTS_BASE_DIR, run_dir_name)
+    # Create timestamped directory for results
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    current_results_dir = os.path.join(RESULTS_BASE_DIR, f"thirty_min_height{C0_C1_RELATIVE_HEIGHT_THRESHOLD}_depth{C1_RETRACEMENT_DEPTH_THRESHOLD}_{timestamp}")
     os.makedirs(current_results_dir, exist_ok=True)
 
-    # Save configuration
-    config_filepath = os.path.join(current_results_dir, "configuration.txt")
-    with open(config_filepath, "w") as f:
-        f.write(f"DATA_FILE: {DATA_FILE}\n")
-        f.write(f"START_ANALYSIS_DATE: {START_ANALYSIS_DATE}\n")
-        f.write(f"C0_C1_RELATIVE_HEIGHT_THRESHOLD: {current_c0_c1_height_threshold}\n")
-        f.write(f"C1_RETRACEMENT_DEPTH_THRESHOLD: {current_c1_retracement_depth_threshold}\n")
-        f.write(f"POST_C2_ANALYSIS_CANDLES: {POST_C2_ANALYSIS_CANDLES}\n")
+    # Define paths for output files
+    stats_output_file = os.path.join(current_results_dir, "stats_summary_thirty_min.txt")
+    raw_patterns_output_file = os.path.join(current_results_dir, "raw_patterns_thirty_min.csv") # Changed filename
 
-    # Run swing failure analysis and save results
-    swing_failure_results_filepath = os.path.join(current_results_dir, "swing_failure_stats.txt")
-    pattern_results = analyze_swing_failures(df, current_c0_c1_height_threshold, current_c1_retracement_depth_threshold, POST_C2_ANALYSIS_CANDLES)
-    aggregate_and_print_stats(pattern_results, swing_failure_results_filepath)
+    # Save raw pattern results to CSV
+    raw_patterns_df.to_csv(raw_patterns_output_file, index=False) # Save the DataFrame with all columns
 
-    # Save the pattern_results DataFrame to a file for later analysis
-    pattern_results_filepath = os.path.join(current_results_dir, "raw_pattern_results_30min.csv")
-    pattern_results.to_csv(pattern_results_filepath, index=False)
-    print(f"Raw pattern results saved to ./{pattern_results_filepath}")
+    print("Aggregating and printing statistics...")
+    aggregate_and_print_stats(raw_patterns_df, stats_output_file)
 
-    # Optional: Plot some examples within the run-specific directory
-    if not pattern_results.empty:
-        plots_output_dir = os.path.join(current_results_dir, "plots")
-        print(f"\nSaving example plots to ./{plots_output_dir}/ ...")
-        # Plot a few bearish and bullish examples
-        bearish_examples = pattern_results[pattern_results['type'] == 'bearish'].head(5)
-        bullish_examples = pattern_results[pattern_results['type'] == 'bullish'].head(5)
+    print(f"Statistics saved to {stats_output_file}")
 
-        for idx, row in bearish_examples.iterrows():
-            plot_pattern_example(row, plots_output_dir, filename_prefix="bearish_pattern")
-        for idx, row in bullish_examples.iterrows():
-            plot_pattern_example(row, plots_output_dir, filename_prefix="bullish_pattern")
-        print("Example plots saved.") 
+    print("Generating example plots...")
+    plot_output_dir = os.path.join(current_results_dir, "plots")
+    os.makedirs(plot_output_dir, exist_ok=True)
+
+    # Plot a few examples (e.g., first 5 bearish and first 5 bullish)
+    bearish_examples = raw_patterns_df[raw_patterns_df['type'] == 'bearish'].head(5)
+    for index, row in bearish_examples.iterrows():
+        plot_pattern_example(row, plot_output_dir, filename_prefix="bearish_pattern")
+
+    bullish_examples = raw_patterns_df[raw_patterns_df['type'] == 'bullish'].head(5)
+    for index, row in bullish_examples.iterrows():
+        plot_pattern_example(row, plot_output_dir, filename_prefix="bullish_pattern")
+
+    print(f"Example plots saved to {plot_output_dir}") 

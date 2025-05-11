@@ -109,10 +109,10 @@ def is_bullish_swing_failure(c0, c1, c0_c1_relative_height_threshold, c1_retrace
     return True
 
 # --- 4. Analysis Loop ---
-def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
+def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_depth_threshold, post_c2_analysis_candles):
     results = [] # To store pattern occurrences and outcomes
     # Need at least C0, C1, C2, and then candles for post-C2 analysis
-    for i in range(len(df) - 2 - POST_C2_ANALYSIS_CANDLES):
+    for i in range(len(df) - 2 - post_c2_analysis_candles):
         c0 = df.iloc[i]
         c1 = df.iloc[i+1]
         c2 = df.iloc[i+2]
@@ -148,7 +148,7 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
             target_price = c2['close'] - potential_reward_excursion
             stop_loss_price = potential_stop_loss
 
-            for j in range(i + 3, min(i + 3 + POST_C2_ANALYSIS_CANDLES, len(df))):
+            for j in range(i + 3, min(i + 3 + post_c2_analysis_candles, len(df))):
                 current_candle = df.iloc[j]
                 if current_candle['low'] <= target_price:
                     hit_target = True
@@ -192,7 +192,7 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
             target_price = c2['close'] + potential_reward_excursion
             stop_loss_price = potential_stop_loss
 
-            for j in range(i + 3, min(i + 3 + POST_C2_ANALYSIS_CANDLES, len(df))):
+            for j in range(i + 3, min(i + 3 + post_c2_analysis_candles, len(df))):
                 current_candle = df.iloc[j]
                 if current_candle['high'] >= target_price:
                     hit_target = True
@@ -455,39 +455,43 @@ def plot_pattern_example(row, output_dir, filename_prefix="pattern"):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    print(f"Loading data from {DATA_FILE}...")
+    print("Loading data...")
     df = load_data(DATA_FILE)
     print(f"Data loaded. Shape: {df.shape}")
 
     print("Analyzing for Swing Failure Patterns...")
-    # Pass thresholds to analysis function
-    pattern_results = analyze_swing_failures(df, C0_C1_RELATIVE_HEIGHT_THRESHOLD, C1_RETRACEMENT_DEPTH_THRESHOLD)
-    print(f"Analysis complete. Found {len(pattern_results)} patterns.")
+    # Pass thresholds and post_c2_analysis_candles to the analysis function
+    raw_patterns_df = analyze_swing_failures(df, C0_C1_RELATIVE_HEIGHT_THRESHOLD, C1_RETRACEMENT_DEPTH_THRESHOLD, POST_C2_ANALYSIS_CANDLES)
+    print(f"Analysis complete. Found {len(raw_patterns_df)} patterns.")
 
-    # Timestamp the results directory
-    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    current_results_dir = os.path.join(RESULTS_BASE_DIR, timestamp)
+    # Create timestamped directory for results
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    current_results_dir = os.path.join(RESULTS_BASE_DIR, f"five_min_height{C0_C1_RELATIVE_HEIGHT_THRESHOLD}_depth{C1_RETRACEMENT_DEPTH_THRESHOLD}_{timestamp}")
     os.makedirs(current_results_dir, exist_ok=True)
-    stats_output_file = os.path.join(current_results_dir, 'stats_summary_5min.txt')
+
+    # Define paths for output files
+    stats_output_file = os.path.join(current_results_dir, "stats_summary_five_min.txt")
+    raw_patterns_output_file = os.path.join(current_results_dir, "raw_patterns_five_min.csv") # Changed filename
+
+    # Save raw pattern results to CSV
+    raw_patterns_df.to_csv(raw_patterns_output_file, index=False) # Save the DataFrame with all columns
 
     print("Aggregating and printing statistics...")
-    # Pass original df to aggregate_and_print_stats if needed for per-hour total candle count (currently removed)
-    aggregate_and_print_stats(pattern_results, output_file=stats_output_file)
+    aggregate_and_print_stats(raw_patterns_df, stats_output_file)
+
     print(f"Statistics saved to {stats_output_file}")
 
     print("Generating example plots...")
-    # Create a dedicated directory for example plots within the timestamped results
-    plots_output_dir = os.path.join(current_results_dir, OUTPUT_DIR)
-    os.makedirs(plots_output_dir, exist_ok=True)
+    plot_output_dir = os.path.join(current_results_dir, "plots")
+    os.makedirs(plot_output_dir, exist_ok=True)
 
-    # Plot a few examples (e.g., first 5 bullish and first 5 bearish if available)
-    bearish_examples = pattern_results[pattern_results['type'] == 'bearish'].head(5)
-    bullish_examples = pattern_results[pattern_results['type'] == 'bullish'].head(5)
+    # Plot a few examples (e.g., first 5 bearish and first 5 bullish)
+    bearish_examples = raw_patterns_df[raw_patterns_df['type'] == 'bearish'].head(5)
+    for index, row in bearish_examples.iterrows():
+        plot_pattern_example(row, plot_output_dir, filename_prefix="bearish_pattern")
 
-    for idx, row in bearish_examples.iterrows():
-        plot_pattern_example(row, plots_output_dir, filename_prefix="bearish_pattern")
+    bullish_examples = raw_patterns_df[raw_patterns_df['type'] == 'bullish'].head(5)
+    for index, row in bullish_examples.iterrows():
+        plot_pattern_example(row, plot_output_dir, filename_prefix="bullish_pattern")
 
-    for idx, row in bullish_examples.iterrows():
-        plot_pattern_example(row, plots_output_dir, filename_prefix="bullish_pattern")
-
-    print(f"Example plots saved to {plots_output_dir}") 
+    print(f"Example plots saved to {plot_output_dir}") 

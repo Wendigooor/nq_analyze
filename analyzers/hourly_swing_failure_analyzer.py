@@ -128,6 +128,8 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
         potential_reward_excursion = None
         hit_reward_target = False # Did price reach a simple target (e.g., C0 open)?
         hit_stop_loss = False # Did price hit the stop loss before the reward target?
+        reward_achieved = False
+        risk_taken = False
 
         # Bearish SFP
         if is_bearish_swing_failure(c0, c1, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
@@ -163,17 +165,26 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
                 # The current boolean flags already represent if the levels were touched. To know which was hit *first* requires iterating.
                 # Let's keep the simple boolean check for now and refine this if needed.
 
+            reward_achieved = potential_reward_excursion > 0
+            risk_taken = potential_stop_loss > 0
+
             results.append({
-                'timestamp': ts0, 'type': 'bearish', 'hour_c0': c0['hour'],
+                'timestamp': ts0,
+                'type': 'bearish',
+                'hour_c0': c0['hour'],
                 'prev_1d_cat': prev_1d_cat,
-                'c0_o':c0['open'], 'c0_h':c0['high'], 'c0_l':c0['low'], 'c0_c':c0['close'],
-                'c1_o':c1['open'], 'c1_h':c1['high'], 'c1_l':c1['low'], 'c1_c':c1['close'],
-                'c2_o':c2['open'], 'c2_h':c2['high'], 'c2_l':c2['low'], 'c2_c':c2['close'],
-                'swept_mid': swept_mid, 'swept_first': swept_first, 'swept_open': swept_open,
+                'c0_o': c0['open'], 'c0_h': c0['high'], 'c0_l': c0['low'], 'c0_c': c0['close'],
+                'c1_o': c1['open'], 'c1_h': c1['high'], 'c1_l': c1['low'], 'c1_c': c1['close'],
+                'c2_o': c2['open'], 'c2_h': c2['high'], 'c2_l': c2['low'], 'c2_c': c2['close'],
+                'swept_mid': swept_mid,
+                'swept_first': swept_first,
+                'swept_open': swept_open,
                 'potential_stop_loss': potential_stop_loss,
                 'potential_reward_excursion': potential_reward_excursion,
-                'hit_reward_target': hit_reward_target,
-                'hit_stop_loss': hit_stop_loss
+                'hit_target': hit_reward_target,
+                'hit_stop_loss': hit_stop_loss,
+                'reward_achieved': reward_achieved,
+                'risk_taken': risk_taken
             })
 
         # Bullish SFP
@@ -197,29 +208,50 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
                 # Check if target was hit
                 if any(subsequent_candles['high'] >= target_price):
                     hit_reward_target = True
+                else:
+                    hit_reward_target = False
 
                 # Check if stop loss was hit
                 if any(subsequent_candles['low'] <= stop_loss_price):
                     hit_stop_loss = True
+                else:
+                    hit_stop_loss = False
 
-                 # Refine hit_reward_target and hit_stop_loss by checking order of events
-                 # A more accurate check would involve iterating candle by candle and comparing hit times.
-                 # For now, a simplified approach: if both are hit in the window, check which *would* be hit first based on price levels
-                 # Or, as a conservative approach, assume stop loss if both are hit (or overlapping within the same candle)
-                 # The current boolean flags already represent if the levels were touched. To know which was hit *first* requires iterating.
-                 # Let's keep the simple boolean check for now and refine this if needed.
+                 # Calculate reward achieved and risk taken based on which level was hit first
+                reward_achieved = 0.0
+                risk_taken = 0.0
+                # A more accurate check would involve iterating candle by candle to see which was hit first
+                # For now, a simplified approach:
+                if hit_reward_target and not hit_stop_loss:
+                    reward_achieved = abs(target_price - c2['close'])
+                    risk_taken = abs(c2['close'] - stop_loss_price)
+                elif hit_stop_loss and not hit_reward_target:
+                     reward_achieved = 0.0
+                     risk_taken = abs(c2['close'] - stop_loss_price)
+                elif hit_reward_target and hit_stop_loss:
+                     # If both hit, determine which one would be hit first based on price levels
+                     # This is a simplification and a more robust method would involve candle-by-candle check
+                     # For now, as a tie-breaker, assume stop loss if both are touched within the window
+                     reward_achieved = 0.0
+                     risk_taken = abs(c2['close'] - stop_loss_price)
 
             results.append({
-                'timestamp': ts0, 'type': 'bullish', 'hour_c0': c0['hour'],
+                'timestamp': ts0,
+                'type': 'bullish',
+                'hour_c0': c0['hour'],
                 'prev_1d_cat': prev_1d_cat,
-                'c0_o':c0['open'], 'c0_h':c0['high'], 'c0_l':c0['low'], 'c0_c':c0['close'],
-                'c1_o':c1['open'], 'c1_h':c1['high'], 'c1_l':c1['low'], 'c1_c':c1['close'],
-                'c2_o':c2['open'], 'c2_h':c2['high'], 'c2_l':c2['low'], 'c2_c':c2['close'],
-                'swept_mid': swept_mid, 'swept_first': swept_first, 'swept_open': swept_open,
+                'c0_o': c0['open'], 'c0_h': c0['high'], 'c0_l': c0['low'], 'c0_c': c0['close'],
+                'c1_o': c1['open'], 'c1_h': c1['high'], 'c1_l': c1['low'], 'c1_c': c1['close'],
+                'c2_o': c2['open'], 'c2_h': c2['high'], 'c2_l': c2['low'], 'c2_c': c2['close'],
+                'swept_mid': swept_mid,
+                'swept_first': swept_first,
+                'swept_open': swept_open,
                 'potential_stop_loss': potential_stop_loss,
                 'potential_reward_excursion': potential_reward_excursion,
-                 'hit_reward_target': hit_reward_target,
-                 'hit_stop_loss': hit_stop_loss
+                'hit_target': hit_reward_target,
+                'hit_stop_loss': hit_stop_loss,
+                'reward_achieved': reward_achieved,
+                'risk_taken': risk_taken
             })
 
     return pd.DataFrame(results)
@@ -263,7 +295,7 @@ def aggregate_and_print_stats(results_df, output_file=None):
                 # Calculate R:R metrics for bearish patterns
                 bear_avg_sl = bear_patterns['potential_stop_loss'].mean() if bear_occurrences > 0 else 0
                 bear_avg_re = bear_patterns['potential_reward_excursion'].mean() if bear_occurrences > 0 else 0
-                bear_hit_target_pct = (bear_patterns['hit_reward_target'].sum() / bear_occurrences) * 100 if bear_occurrences > 0 else 0
+                bear_hit_target_pct = (bear_patterns['hit_target'].sum() / bear_occurrences) * 100 if bear_occurrences > 0 else 0
                 bear_hit_sl_pct = (bear_patterns['hit_stop_loss'].sum() / bear_occurrences) * 100 if bear_occurrences > 0 else 0
 
             else:
@@ -280,7 +312,7 @@ def aggregate_and_print_stats(results_df, output_file=None):
                  # Calculate R:R metrics for bullish patterns
                 bull_avg_sl = bull_patterns['potential_stop_loss'].mean() if bull_occurrences > 0 else 0
                 bull_avg_re = bull_patterns['potential_reward_excursion'].mean() if bull_occurrences > 0 else 0
-                bull_hit_target_pct = (bull_patterns['hit_reward_target'].sum() / bull_occurrences) * 100 if bull_occurrences > 0 else 0
+                bull_hit_target_pct = (bull_patterns['hit_target'].sum() / bull_occurrences) * 100 if bull_occurrences > 0 else 0
                 bull_hit_sl_pct = (bull_patterns['hit_stop_loss'].sum() / bull_occurrences) * 100 if bull_occurrences > 0 else 0
 
             else:
@@ -370,48 +402,45 @@ def plot_pattern_example(row, output_dir, filename_prefix="pattern"):
 
 # --- Main Execution ---
 if __name__ == "__main__":
+    print("Loading data...")
     df = load_data(DATA_FILE)
+    print(f"Data loaded. Shape: {df.shape}")
 
-    # Get current parameter values for filename
-    current_c0_c1_height_threshold = C0_C1_RELATIVE_HEIGHT_THRESHOLD
-    current_c1_retracement_depth_threshold = C1_RETRACEMENT_DEPTH_THRESHOLD
+    print("Analyzing for Swing Failure Patterns...")
+    # Pass thresholds and post_c2_analysis_candles to the analysis function
+    raw_patterns_df = analyze_swing_failures(df, C0_C1_RELATIVE_HEIGHT_THRESHOLD, C1_RETRACEMENT_DEPTH_THRESHOLD, POST_C2_ANALYSIS_CANDLES)
+    print(f"Analysis complete. Found {len(raw_patterns_df)} patterns.")
 
-    # Create a timestamped directory for this run's results
-    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    run_dir_name = f"height{current_c0_c1_height_threshold}_depth{current_c1_retracement_depth_threshold}_{timestamp}"
-    current_results_dir = os.path.join(RESULTS_BASE_DIR, run_dir_name)
+    # Create timestamped directory for results
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    current_results_dir = os.path.join(RESULTS_BASE_DIR, f"hourly_height{C0_C1_RELATIVE_HEIGHT_THRESHOLD}_depth{C1_RETRACEMENT_DEPTH_THRESHOLD}_{timestamp}")
     os.makedirs(current_results_dir, exist_ok=True)
 
-    # Save configuration
-    config_filepath = os.path.join(current_results_dir, "configuration.txt")
-    with open(config_filepath, "w") as f:
-        f.write(f"DATA_FILE: {DATA_FILE}\n")
-        f.write(f"START_ANALYSIS_DATE: {START_ANALYSIS_DATE}\n")
-        f.write(f"C0_C1_RELATIVE_HEIGHT_THRESHOLD: {current_c0_c1_height_threshold}\n")
-        f.write(f"C1_RETRACEMENT_DEPTH_THRESHOLD: {current_c1_retracement_depth_threshold}\n")
+    # Define paths for output files
+    stats_output_file = os.path.join(current_results_dir, "stats_summary_hourly.txt")
+    raw_patterns_output_file = os.path.join(current_results_dir, "raw_patterns_hourly.csv") # Changed filename
 
-    # Run swing failure analysis and save results
-    swing_failure_results_filepath = os.path.join(current_results_dir, "swing_failure_stats.txt")
-    pattern_results = analyze_swing_failures(df, current_c0_c1_height_threshold, current_c1_retracement_depth_threshold, POST_C2_ANALYSIS_CANDLES)
-    aggregate_and_print_stats(pattern_results, swing_failure_results_filepath)
+    # Save raw pattern results to CSV
+    raw_patterns_df.to_csv(raw_patterns_output_file, index=False) # Save the DataFrame with all columns
 
-    # Save the pattern_results DataFrame to a file for later analysis
-    pattern_results_filepath = os.path.join(current_results_dir, "raw_pattern_results.csv")
-    pattern_results.to_csv(pattern_results_filepath, index=False)
-    print(f"Raw pattern results saved to ./{pattern_results_filepath}")
+    print("Aggregating and printing statistics...")
+    aggregate_and_print_stats(raw_patterns_df, stats_output_file)
 
-    # Optional: Plot some examples within the run-specific directory
-    if not pattern_results.empty:
-        plots_output_dir = os.path.join(current_results_dir, "plots")
-        print(f"\nSaving example plots to ./{plots_output_dir}/ ...")
-        # Plot a few bearish and bullish examples
-        bearish_examples = pattern_results[pattern_results['type'] == 'bearish'].head(10)
-        bullish_examples = pattern_results[pattern_results['type'] == 'bullish'].head(10)
+    print(f"Statistics saved to {stats_output_file}")
 
-        for idx, row in bearish_examples.iterrows():
-            plot_pattern_example(row, plots_output_dir, "bearish_sfp")
-        for idx, row in bullish_examples.iterrows():
-            plot_pattern_example(row, plots_output_dir, "bullish_sfp")
-        print("Example plots saved.")
+    print("Generating example plots...")
+    plot_output_dir = os.path.join(current_results_dir, "plots")
+    os.makedirs(plot_output_dir, exist_ok=True)
+
+    # Plot a few examples (e.g., first 5 bearish and first 5 bullish)
+    bearish_examples = raw_patterns_df[raw_patterns_df['type'] == 'bearish'].head(5)
+    for index, row in bearish_examples.iterrows():
+        plot_pattern_example(row, plot_output_dir, filename_prefix="bearish_pattern")
+
+    bullish_examples = raw_patterns_df[raw_patterns_df['type'] == 'bullish'].head(5)
+    for index, row in bullish_examples.iterrows():
+        plot_pattern_example(row, plot_output_dir, filename_prefix="bullish_pattern")
+
+    print(f"Example plots saved to {plot_output_dir}")
 
     # Note: Net Change Analysis results will need to be added to this directory separately or by modifying net_change_analyzer.py

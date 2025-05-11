@@ -243,22 +243,28 @@ if __name__ == "__main__":
     if not latest_dir_5min:
         print(f"Could not find latest 5-minute results directory in {RESULTS_BASE_DIR_5MIN}")
 
-    if latest_dir_1h and latest_dir_30min and latest_dir_5min:
-        print(f"Found latest 1-hour results in: {latest_dir_1h}")
-        print(f"Found latest 30-minute results in: {latest_dir_30min}")
-        print(f"Found latest 5-minute results in: {latest_dir_5min}")
+    df_1h = None
+    df_30min = None
+    df_5min = None
 
-        # 2. Load the raw pattern results
-        df_1h = load_raw_pattern_results(latest_dir_1h, "raw_pattern_results.csv")
-        df_30min = load_raw_pattern_results(latest_dir_30min, "raw_pattern_results_30min.csv")
-        df_5min = load_raw_pattern_results(latest_dir_5min, "raw_pattern_results_5min.csv")
+    # 2. Load raw pattern results from the latest directories using the correct filenames
+    if latest_dir_1h:
+        # Assuming the filename for raw 1-hour patterns is raw_patterns_hourly.csv
+        df_1h = load_raw_pattern_results(latest_dir_1h, "raw_patterns_hourly.csv")
+        if df_1h is not None: print(f"Loaded {len(df_1h)} 1-hour patterns.")
 
-        # 3. Perform cross-timeframe analysis
-        # Ensure at least the base timeframe data is loaded for analysis
-        if df_1h is not None or df_30min is not None:
-             analyze_cross_timeframe_correlation(df_1h, df_30min, df_5min)
-        else:
-             print("Could not load sufficient data to perform cross-timeframe analysis (need at least 1h or 30min data).")
+    if latest_dir_30min:
+        # Assuming the filename for raw 30-minute patterns is raw_patterns_thirty_min.csv
+        df_30min = load_raw_pattern_results(latest_dir_30min, "raw_patterns_thirty_min.csv")
+        if df_30min is not None: print(f"Loaded {len(df_30min)} 30-minute patterns.")
 
+    if latest_dir_5min:
+        # Assuming the filename for raw 5-minute patterns is raw_patterns_five_min.csv
+        df_5min = load_raw_pattern_results(latest_dir_5min, "raw_patterns_five_min.csv")
+        if df_5min is not None: print(f"Loaded {len(df_5min)} 5-minute patterns.")
+
+    # 3. Perform cross-timeframe analysis if data is loaded
+    if df_1h is not None or df_30min is not None or df_5min is not None:
+        analyze_cross_timeframe_correlation(df_1h, df_30min, df_5min)
     else:
-        print("Could not locate latest results directories for all necessary timeframes (1h, 30min, 5min). Please run the individual timeframe analyzers first.") 
+        print("Could not load raw pattern data for any timeframe. Skipping cross-timeframe analysis.") 
