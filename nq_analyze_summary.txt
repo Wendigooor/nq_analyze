@@ -1,0 +1,738 @@
+NQ Analyze Project Summary for LLM
+=================================
+
+===== PRD.md =====
+# PRD: NASDAQ H1 Swing Failure Statistical Analyzer with Cursor
+
+Based on https://youtu.be/UJ58fe7g91c?si=9jIu6l1WMElvfSBy video
+
+data to donwload: NT market data https://drive.google.com/drive/folders/130enKE2NMg5HriMu6VjwnZjWzPqprM3a + https://drive.google.com/drive/folders/1ZPmLmaUqk-DH-YXN110gpYxOfn9iiKe3 
++ https://firstratedata.com/i/futures/NQ
++ https://portaracqg.com/futures/int/enq
+
+**Version:** 1.2
+**Date:** 2025-05-11
+**Author/User:** 
+
+## 1. Project Overview
+
+### 1.1. Objective
+To replicate and potentially refine a statistical model for identifying and analyzing "H1 Swing Failure" patterns on historical NASDAQ (QQQ) hourly data. The primary goal is to understand the probabilities of certain price movements following these patterns and to explore how different pattern parameters affect these probabilities. The project will also explore extending the analysis to other timeframes and incorporating historical context and statistical correlations to enhance trading strategy insights.
+
+### 1.2. Scope
+*   Attempt to acquire historical NASDAQ (QQQ) hourly data from 2010 to the present. (Note: yfinance limitations encountered, using provided sample data for initial analysis).
+*   Implement Python scripts (assisted by Cursor) to:
+    *   Define bearish and bullish H1 Swing Failure patterns (3-candle setup).
+    *   Iterate through historical data to find these patterns.
+    *   Analyze the outcome of the candle following the pattern (C2) relative to key levels of the pattern candles (C0, C1).
+    *   Aggregate statistics by the hour of pattern formation (NY Time).
+    *   Generate example plots of identified patterns.
+*   Use Cursor for code generation, modification, explanation, and debugging.
+*   Experiment with different pattern definition parameters.
+*   Implement Net Change Analysis as an additional feature.
+*   **Analyze the influence of previous days' price distribution on swing failure statistics.**
+*   **Perform swing failure analysis on 5-minute and 30-minute timeframes.**
+*   **Analyze correlations and explanatory power between 1-hour, 30-minute, and 5-minute swing failure patterns.**
+*   **Utilize statistical correlation methods (using libraries like pandas/numpy) to find correlations relevant to the trading strategy and identify potential advantages.**
+
+### 1.3. Target User
+A trader/analyst familiar with basic Python and trading concepts, looking to use Cursor to efficiently conduct statistical market studies.
+
+## 2. Prerequisites
+
+### 2.1. Software
+*   **Cursor IDE:** Installed and configured.
+*   **Python 3.x:** Installed.
+*   **Python Virtual Environment:** Recommended (`venv_trading_stats` created and activated).
+*   **Required Python Libraries:**
+    *   `pandas` (Installed)
+    *   `numpy` (Installed)
+    *   `yfinance` (Installed - Note: Limitations for historical hourly data)
+    *   `plotly` (Installed)
+    *   `kaleido` (Installed for plotting)
+    *   Ensure these are installed in your active virtual environment: `pip install pandas numpy yfinance plotly kaleido`
+
+### 2.2. Data
+*   **Source:** Initially planned: NASDAQ 100 hourly data (using QQQ ETF as a proxy via `yfinance`) from January 1, 2010, to present. **Currently using sample hourly data provided in `frd_sample_futures_NQ/NQ_1hour_sample.csv` due to yfinance historical data limitations.** Future steps will use available sample data: `NQ_5min_sample.csv` and `NQ_30min_sample.csv`.
+*   **Timespan:** Sample data covers a limited recent period. Full analysis requires data from January 1, 2010, to present for both 1-hour and potentially 15-minute intervals.
+*   **Format:** CSV file (`nasdaq_h1_2010_present.csv` originally planned, now using `frd_sample_futures_NQ/NQ_1hour_sample.csv`) with columns: `Timestamp` (or `timestamp`), `Open`, `High`, `Low`, `Close`, `Volume`. 15-minute data should ideally follow a similar format.
+
+### 2.3. Existing Code Files
+You should have the following files:
+*   `scrapers/download_ticker_data.py`
+*   `analyzers/hourly_swing_failure_analyzer.py` (Modified to use sample data, refined pattern definitions, save results)
+*   `analyzers/net_change_analyzer.py` (Created)
+
+## 3. Project Setup & Structure in Cursor
+
+### 3.1. Folder Structure
+
+NQ_ANALYZE/
+├── analyzers/
+│ └── hourly_swing_failure_analyzer.py
+│ └── net_change_analyzer.py
+├── scrapers/
+│ └── download_ticker_data.py
+├── frd_sample_futures_NQ/ (Contains sample data)
+│   └── NQ_1hour_sample.csv
+│   └── NQ_15min_sample.csv (Placeholder for future 15-minute data) - **Updated to NQ_5min_sample.csv and NQ_30min_sample.csv**
+├── analysis_results/ (New folder for timestamped analysis runs)
+│   └── height[value]_depth[value]_YYYYMMDD_HHMMSS/
+│       ├── configuration.txt
+│       ├── swing_failure_stats.txt
+│       └── plots/ (Example plots)
+├── plots_swing_failures/ (Original plotting output directory - can be deprecated)
+├── nasdaq_h1_2010_present.csv (Original target data file - currently not used for analysis)
+└── README.md
+└── PRD.md (this file)
+
+### 3.2. Opening Project in Cursor
+1.  Launch Cursor.
+2.  Open the `NQ_ANALYZE` folder as your project workspace.
+
+## 4. Core Analysis Workflow with Cursor (Completed using sample data)
+
+### 4.1. Step 1: Data Acquisition (Running `download_ticker_data.py`)
+
+*   Attempted to use `scrapers/download_ticker_data.py` to acquire historical data from 2010. Encountered limitations with `yfinance` for the requested historical depth of hourly data.
+*   Proceeded with using provided sample hourly data located in `frd_sample_futures_NQ/NQ_1hour_sample.csv`.
+
+### 4.2. Step 2: Swing Failure Analysis (Running `analyzers/hourly_swing_failure_analyzer.py`)
+
+*   Successfully ran the `analyzers/hourly_swing_failure_analyzer.py` script using the sample data.
+*   The script produced the statistical summary table and generated example plots. The script has been modified to save these results in a timestamped directory within the `analysis_results` folder.
+
+### 4.3. Step 3: Refining Pattern Definitions with Cursor
+
+*   Successfully refined the `is_bearish_swing_failure` and `is_bullish_swing_failure` functions based on the specific conditions mentioned in this section and the user's instructions.
+*   Modified the script to use configuration variables for easier experimentation.
+
+### 4.4. Step 4: Refining Statistical Aggregation with Cursor (Optional)
+
+*   Successfully modified the `aggregate_and_print_stats` function to calculate the 'Hit%' as a percentage of the total number of bearish (or bullish) patterns found across all hours.
+
+### 4.5. Step 5: Debugging with Cursor
+
+*   Encountered and successfully resolved a plotting error related to the `kaleido` library.
+*   Resolved a linter error in `aggregate_and_print_stats` related to line structure.
+
+## 5. Key Parameters for Experimentation (via Cursor prompts)
+
+Experiment with different values for `C0_C1_RELATIVE_HEIGHT_THRESHOLD` and `C1_RETRACEMENT_DEPTH_THRESHOLD` in `analyzers/hourly_swing_failure_analyzer.py` and re-run the script to see how the statistics change. The results will be saved in timestamped directories.
+
+1.  **`C0_C1_RELATIVE_HEIGHT_THRESHOLD`:** (e.g., 0.9, 0.75, 0.5)
+2.  **`C1_RETRACEMENT_DEPTH_THRESHOLD`:** (e.g., 0.2, 0.5, 0.8 for how much C1 can retrace into C0 against the expected direction without invalidating the pattern)
+3.  **Strictness of C1 close within C0 range:** Currently `c1['close'] < c0['high'] and c1['close'] > c0['low']`. This can also be refined.
+
+## 6. Advanced Analyses & Future Steps
+
+### 6.1. Net Change Analysis (Completed)
+
+*   **Description:** A script (`analyzers/net_change_analyzer.py`) was created to calculate and analyze the net percentage change for hourly candles, including outlier filtering and hourly aggregation.
+
+### 6.2. Influence of Previous Days' Distribution
+
+*   **Objective:** To determine if the overall price movement (distribution) in the 1 to 3 days preceding a potential swing failure pattern influences the pattern's outcome probabilities.
+*   **Tasks:**
+    1.  Modify `analyzers/hourly_swing_failure_analyzer.py` (or create a new script) to calculate metrics describing the price distribution of the previous 1, 2, and 3 days for each candle (e.g., total percentage change, number of bullish/bearish days, volatility).
+    2.  Incorporate these historical distribution metrics into the analysis.
+    3.  Analyze and report how different historical distribution scenarios correlate with the success or failure rates of swing failure patterns.
+
+### 6.3. 5-Minute and 30-Minute Timeframe Analysis
+
+*   **Objective:** To replicate the swing failure analysis on NASDAQ (QQQ) 5-minute and 30-minute data.
+*   **Tasks:**
+    1.  Use the available sample NASDAQ (QQQ) 5-minute and 30-minute data (`NQ_5min_sample.csv` and `NQ_30min_sample.csv`).
+    2.  Create new Python scripts (e.g., `analyzers/thirty_min_swing_failure_analyzer.py` and `analyzers/five_min_swing_failure_analyzer.py`) based on the hourly script.
+    3.  Modify the new scripts to load and process the respective timeframe data.
+    4.  Run the analysis on both 5-minute and 30-minute data and generate statistical output and plots similar to the 1-hour analysis.
+
+### 6.4. Cross-Timeframe Correlation and Insights
+
+*   **Objective:** To find correlations and gain explanatory insights by comparing swing failure patterns and outcomes between the 1-hour, 30-minute, and 5-minute timeframes.
+*   **Tasks:**
+    1.  Develop methods to match or relate patterns occurring on the 5-minute and 30-minute timeframes with those on the 1-hour timeframe (e.g., does a 5-min SFP within a 30-min SFP, which is within an H1 SFP, have a different probability?).
+    2.  Use statistical methods (e.g., correlation coefficients, contingency tables) to analyze the relationship between patterns and outcomes across timeframes.
+    3.  Document findings on how different timeframe interactions correlate with pattern success/failure and provide potential explanations for observed correlations.
+
+- **Risk to Reward (R:R) Analysis**
+    - **Objective:** To analyze the potential Risk to Reward ratio associated with swing failure patterns to identify potentially profitable trading opportunities.
+    - **Tasks:**
+        1.  Modify analyzer scripts to define potential Stop Loss and Target levels based on pattern characteristics (e.g., C1 high/low, C0 high/low). (Partially implemented in 1h and 5min scripts).
+        2.  Analyze price action following the pattern (after C2) within a defined number of candles to determine if the Stop Loss or Target was hit first.
+        3.  Calculate the achieved Reward and the Risk taken for each pattern occurrence.
+        4.  Incorporate R:R metrics (e.g., average R:R ratio, percentage of patterns hitting target/stop loss) into the statistical reporting for each timeframe.
+        5.  Include R:R information in the cross-timeframe correlation analysis.
+
+### 6.5. General Statistical Correlation Analysis
+
+*   **Objective:** To use statistical methods to uncover correlations within the data (both raw price data and identified pattern occurrences/outcomes) that can provide insights and potential advantages for the trading strategy.
+*   **Tasks:**
+    1.  Identify potential variables for correlation analysis (e.g., volume during pattern formation, time of day, preceding price action, volatility, specific candle shapes).
+    2.  Apply statistical techniques (e.g., Pearson correlation, Spearman correlation, regression analysis) using libraries like pandas and numpy to quantify relationships.
+    3.  Analyze the strength and significance of identified correlations.
+    4.  Summarize findings and discuss how these correlations might inform and improve the trading strategy.
+
+## 7. Expected Deliverables
+*   A functioning Python environment for the analysis.
+*   Sample data files used for analysis (`frd_sample_futures_NQ/NQ_1hour_sample.csv`, potentially `frd_sample_futures_NQ/NQ_15min_sample.csv` or similar).
+*   Modified `analyzers/hourly_swing_failure_analyzer.py` script.
+*   `analyzers/net_change_analyzer.py` script.
+*   (Future) New script(s) for 15-minute analysis and cross-timeframe correlation.
+*   Analysis results saved in timestamped directories (`analysis_results/`).
+*   Console output of statistical tables.
+*   PNG images of example patterns.
+*   Documentation of findings from historical distribution analysis, cross-timeframe analysis, and general correlation analysis.
+
+## 8. Notes & Best Practices for using Cursor
+*   **Be Specific:** The more specific your prompt to Cursor (Ctrl+K or chat), the better the results.
+*   **Iterate:** Don't expect perfect code on the first try. Ask Cursor for small changes, test, then ask for more.
+*   **Select Code:** When asking for modifications to existing code, select the relevant lines/function before invoking Cursor.
+*   **Use Chat (Ctrl+L):** For broader questions, explanations, or generating new script ideas.
+*   **Use "Edit with AI" (Ctrl+K on selection):** For targeted code modifications.
+*   **Review AI Output:** Always review code generated or modified by AI to ensure it meets your requirements and is correct.
+*   **Version Control (Git):** Highly recommended. Commit changes after each significant successful step.
+
+## 9. Midnight Open Snap Analysis
+
+### 9.1. Objective
+To test the hypothesis that price returns to the TMO (True Midnight Open, 00:00 ET) level within the 08:30-12:00 ET trading window with a probability of 60-80%, as mentioned in ICT methodology. The analysis will also identify "snap back" patterns (false breakouts with quick reversals) and analyze their probability of occurrence.
+
+### 9.2. Scope
+- Use existing NQ futures data from the frd_sample_futures_NQ directory (1H, 5M, 30M timeframes)
+- Identify the TMO level for each trading day
+- Analyze price touches to TMO in the specified window
+- Calculate touch probabilities by day of week (Monday-Friday)
+- Analyze distribution of touches by minute intervals (0, 15, 30, 45 minutes)
+- Identify and analyze "snap back" patterns (false breakouts with quick reversals)
+- Calculate "gap fill" statistics (when overnight gaps ≥X% are filled by ≥50%)
+- Generate visualizations of price movement around TMO levels
+- Save statistical results and plots
+
+### 9.3. Prerequisites
+- Existing data files: NQ_1hour_sample.csv, NQ_5min_sample.csv, NQ_30min_sample.csv
+- Libraries: pandas, numpy, plotly, kaleido
+- Timezone conversion support for New York Time (EST/EDT)
+
+### 9.4. Expected Deliverables
+- Python script midnight_open_analyzer.py in the midnight_open_snap directory
+- Statistical tables showing touch probabilities by day of week
+- Distribution of touches by minute intervals
+- Gap fill analysis results
+- Visualization plots of price action around TMO levels
+- CSV output files with detailed results
+- Integration with existing Swing Failure Pattern analysis for cross-pattern insights
+
+
+
+===== download_ticker_data.py =====
+import yfinance as yf
+import pandas as pd
+
+# Download QQQ data
+ticker = "QQQ"
+data = yf.download(ticker, start="2010-01-01", interval="1h")
+
+# Ensure NY Time (yfinance usually provides this, but double-check and convert if necessary)
+# data.index = data.index.tz_convert('America/New_York') # If conversion needed
+
+# Save to CSV
+data.to_csv("nasdaq_h1_2010_present.csv")
+print("Data downloaded and saved.")
+===== hourly_swing_failure_analyzer.py =====
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go # For plotting
+from plotly.subplots import make_subplots # For plotting
+import os # For creating plot directories
+import datetime # For timestamping results
+import sys # To capture stdout
+import io # To capture stdout
+
+# --- 1. Configuration ---
+DATA_FILE = "frd_sample_futures_NQ/NQ_1hour_sample.csv" # Original FRD data file
+OUTPUT_DIR = "plots_swing_failures"
+RESULTS_BASE_DIR = "analysis_results" # Original results base directory
+START_ANALYSIS_DATE = "2010-01-01" # Original start date for FRD data
+C0_C1_RELATIVE_HEIGHT_THRESHOLD = 0.9 # e.g., C1 height <= 0.9 * C0 height
+C1_RETRACEMENT_DEPTH_THRESHOLD = 0.5 # e.g., C1 must not retrace more than 50% into C0 against expected direction
+POST_C2_ANALYSIS_CANDLES = 5 # Number of candles to look at after C2 for R:R
+
+# --- 2. Data Loading and Preprocessing ---
+def load_data(filepath):
+    df = pd.read_csv(filepath)
+    
+    # Adjust column name for timestamp based on the sample data format (FRD format)
+    if 'timestamp' in df.columns:
+        df['Timestamp'] = pd.to_datetime(df['timestamp'])
+        df.drop(columns=['timestamp'], inplace=True)
+    elif 'Timestamp' in df.columns:
+        df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+    elif 'Datetime' in df.columns:
+        df['Timestamp'] = pd.to_datetime(df['Datetime'])
+        df.drop(columns=['Datetime'], inplace=True)
+    else:
+        raise ValueError("Timestamp or Datetime column not found in data file.")
+
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.set_index('Timestamp', inplace=True)
+
+    # Standardize column names and select relevant columns for FRD data
+    df.rename(columns={'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'}, inplace=True) # Standardize
+    
+    # Check if volume column exists before selecting
+    required_cols = ['open', 'high', 'low', 'close']
+    if 'volume' in df.columns:
+        required_cols.append('volume')
+    
+    df = df[required_cols]
+    
+    df.dropna(inplace=True)
+    df = df[df.index >= pd.to_datetime(START_ANALYSIS_DATE)]
+    df['hour'] = df.index.hour
+    df['c0_height'] = abs(df['open'] - df['close'])
+
+    # Calculate net change over previous days
+    # Assuming 24 hours per day for simplicity in hourly data
+    df['prev_1d_change'] = df['close'].pct_change(periods=24) * 100
+    df['prev_2d_change'] = df['close'].pct_change(periods=48) * 100
+    df['prev_3d_change'] = df['close'].pct_change(periods=72) * 100
+
+    # Drop rows with NaN values resulting from pct_change
+    df.dropna(inplace=True)
+
+    return df
+
+# --- Helper function to categorize daily change ---
+def categorize_change(change_pct):
+    if change_pct < -1.0:
+        return 'Strongly Down'
+    elif -1.0 <= change_pct < -0.1:
+        return 'Slightly Down'
+    elif -0.1 <= change_pct <= 0.1:
+        return 'Flat'
+    elif 0.1 < change_pct <= 1.0:
+        return 'Slightly Up'
+    else:
+        return 'Strongly Up'
+
+# --- 3. Pattern Definition Functions ---
+def is_bearish_swing_failure(c0, c1, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
+    """
+    c0: pandas Series for the first candle
+    c1: pandas Series for the second candle
+    """
+    if not (c0['close'] > c0['open']): return False # C0 must be bullish
+    if not (c1['high'] > c0['high']): return False # C1 wicks above C0 high
+    if not (c1['close'] < c0['high'] and c1['close'] > c0['low']): return False # C1 closes inside C0 range
+
+    c0_height = abs(c0['open'] - c0['close'])
+    c1_height = abs(c1['open'] - c1['close'])
+
+    # Use c1_retracement_depth_threshold for C1 low condition
+    if not (c1['low'] > c0['close'] - c1_retracement_depth_threshold * c0_height): return False
+
+    # Use c0_c1_relative_height_threshold for C1 height condition
+    if not (c1_height <= c0_c1_relative_height_threshold * c0_height): return False
+
+    return True
+
+def is_bullish_swing_failure(c0, c1, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
+    """
+    c0: pandas Series for the first candle
+    c1: pandas Series for the second candle
+    """
+    if not (c0['close'] < c0['open']): return False # C0 must be bearish
+    if not (c1['low'] < c0['low']): return False # C1 wicks below C0 low
+    if not (c1['close'] > c0['low'] and c1['close'] < c0['high']): return False # C1 closes inside C0 range
+
+    c0_height = abs(c0['open'] - c0['close'])
+    c1_height = abs(c1['open'] - c1['close'])
+
+    # Use c1_retracement_depth_threshold for C1 high condition
+    if not (c1['high'] < c0['close'] + c1_retracement_depth_threshold * c0_height): return False
+
+    # Use c0_c1_relative_height_threshold for C1 height condition
+    if not (c1_height <= c0_c1_relative_height_threshold * c0_height): return False
+
+    return True
+
+# --- 4. Analysis Loop ---
+def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_depth_threshold, post_c2_analysis_candles):
+    results = [] # To store pattern occurrences and outcomes
+    # Need 3 candles: c0, c1, c2, plus candles after c2 for R:R analysis
+    for i in range(len(df) - 2 - post_c2_analysis_candles):
+        c0 = df.iloc[i]
+        c1 = df.iloc[i+1]
+        c2 = df.iloc[i+2]
+        # Get subsequent candles for R:R analysis
+        subsequent_candles = df.iloc[i+3 : i+3+post_c2_analysis_candles]
+
+        # Timestamps for context
+        ts0, ts1, ts2 = df.index[i], df.index[i+1], df.index[i+2]
+
+        # Get previous day's change category
+        prev_1d_cat = categorize_change(df['prev_1d_change'].iloc[i])
+
+        # --- Calculate R:R related metrics ---
+        potential_stop_loss = None
+        potential_reward_excursion = None
+        hit_reward_target = False # Did price reach a simple target (e.g., C0 open)?
+        hit_stop_loss = False # Did price hit the stop loss before the reward target?
+        reward_achieved = 0.0
+        risk_taken = 0.0
+
+        # Bearish SFP
+        if is_bearish_swing_failure(c0, c1, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
+            swept_mid = c2['low'] <= c1['low']
+            swept_first = c2['low'] <= c0['low']
+            swept_open = c2['low'] <= c0['open']
+
+            # Calculate potential Stop Loss (distance from C2 close to C1 high)
+            potential_stop_loss = c1['high'] - c2['close'] if c1['high'] > c2['close'] else 0
+
+            # Calculate potential Reward Excursion (max drop after C2)
+            if not subsequent_candles.empty:
+                min_low_after_c2 = subsequent_candles['low'].min()
+                potential_reward_excursion = c2['close'] - min_low_after_c2 if c2['close'] > min_low_after_c2 else 0
+
+                # Check if a simple target (e.g., C0 open) was hit before stop loss (C1 high)
+                # This is a simplified check. A more accurate check would involve iterating candle by candle.
+                target_price = c0['open']
+                stop_loss_price = c1['high']
+
+                # Check if target was hit
+                if any(subsequent_candles['low'] <= target_price):
+                     hit_reward_target = True
+                else:
+                    hit_reward_target = False
+
+                # Check if stop loss was hit
+                if any(subsequent_candles['high'] >= stop_loss_price):
+                     hit_stop_loss = True
+                else:
+                    hit_stop_loss = False
+
+                 # Calculate reward achieved and risk taken based on which level was hit first
+                reward_achieved = 0.0
+                risk_taken = 0.0
+                # A more accurate check would involve iterating candle by candle to see which was hit first
+                # For now, a simplified approach:
+                if hit_reward_target and not hit_stop_loss:
+                    reward_achieved = abs(target_price - c2['close'])
+                    risk_taken = abs(c2['close'] - stop_loss_price)
+                elif hit_stop_loss and not hit_reward_target:
+                     reward_achieved = 0.0
+                     risk_taken = abs(c2['close'] - stop_loss_price)
+                elif hit_reward_target and hit_stop_loss:
+                     # If both hit, determine which one would be hit first based on price levels
+                     # This is a simplification and a more robust method would involve candle-by-candle check
+                     # For now, as a tie-breaker, assume stop loss if both are touched within the window
+                     reward_achieved = 0.0
+                     risk_taken = abs(c2['close'] - stop_loss_price)
+
+
+            results.append({
+                'timestamp': ts0,
+                'type': 'bearish',
+                'hour_c0': c0['hour'],
+                'prev_1d_cat': prev_1d_cat,
+                'c0_o': c0['open'], 'c0_h': c0['high'], 'c0_l': c0['low'], 'c0_c': c0['close'],
+                'c1_o': c1['open'], 'c1_h': c1['high'], 'c1_l': c1['low'], 'c1_c': c1['close'],
+                'c2_o': c2['open'], 'c2_h': c2['high'], 'c2_l': c2['low'], 'c2_c': c2['close'],
+                'swept_mid': swept_mid,
+                'swept_first': swept_first,
+                'swept_open': swept_open,
+                'potential_stop_loss': potential_stop_loss,
+                'potential_reward_excursion': potential_reward_excursion,
+                'hit_target': hit_reward_target, # Use hit_target for consistency with cross-timeframe
+                'hit_stop_loss': hit_stop_loss,
+                'reward_achieved': reward_achieved,
+                'risk_taken': risk_taken
+            })
+
+        # Bullish SFP
+        if is_bullish_swing_failure(c0, c1, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
+            swept_mid = c2['high'] >= c1['high']
+            swept_first = c2['high'] >= c0['high']
+            swept_open = c2['high'] >= c0['open'] # Assuming target is C0 open for bullish too
+
+            # Calculate potential Stop Loss (distance from C2 close to C1 low)
+            potential_stop_loss = c2['close'] - c1['low'] if c2['close'] > c1['low'] else 0
+
+            # Calculate potential Reward Excursion (max rise after C2)
+            if not subsequent_candles.empty:
+                max_high_after_c2 = subsequent_candles['high'].max()
+                potential_reward_excursion = max_high_after_c2 - c2['close'] if max_high_after_c2 > c2['close'] else 0
+
+                # Check if a simple target (e.g., C0 open) was hit before stop loss (C1 low)
+                target_price = c0['open']
+                stop_loss_price = c1['low']
+
+                # Check if target was hit
+                if any(subsequent_candles['high'] >= target_price):
+                    hit_reward_target = True
+                else:
+                    hit_reward_target = False
+
+                # Check if stop loss was hit
+                if any(subsequent_candles['low'] <= stop_loss_price):
+                    hit_stop_loss = True
+                else:
+                    hit_stop_loss = False
+
+                 # Calculate reward achieved and risk taken based on which level was hit first
+                reward_achieved = 0.0
+                risk_taken = 0.0
+                # A more accurate check would involve iterating candle by candle to see which was hit first
+                # For now, a simplified approach:
+                if hit_reward_target and not hit_stop_loss:
+                    reward_achieved = abs(target_price - c2['close'])
+                    risk_taken = abs(c2['close'] - stop_loss_price)
+                elif hit_stop_loss and not hit_reward_target:
+                     reward_achieved = 0.0
+                     risk_taken = abs(c2['close'] - stop_loss_price)
+                elif hit_reward_target and hit_stop_loss:
+                     # If both hit, determine which one would be hit first based on price levels
+                     # This is a simplification and a more robust method would involve candle-by-candle check
+                     # For now, as a tie-breaker, assume stop loss if both are touched within the window
+                     reward_achieved = 0.0
+                     risk_taken = abs(c2['close'] - stop_loss_price)
+
+
+            results.append({
+                'timestamp': ts0,
+                'type': 'bullish',
+                'hour_c0': c0['hour'],
+                'prev_1d_cat': prev_1d_cat,
+                'c0_o': c0['open'], 'c0_h': c0['high'], 'c0_l': c0['low'], 'c0_c': c0['close'],
+                'c1_o': c1['open'], 'c1_h': c1['high'], 'c1_l': c1['low'], 'c1_c': c1['close'],
+                'c2_o': c2['open'], 'c2_h': c2['high'], 'c2_l': c2['low'], 'c2_c': c2['close'],
+                'swept_mid': swept_mid,
+                'swept_first': swept_first,
+                'swept_open': swept_open,
+                'potential_stop_loss': potential_stop_loss,
+                'potential_reward_excursion': potential_reward_excursion,
+                'hit_target': hit_reward_target, # Use hit_target for consistency with cross-timeframe
+                'hit_stop_loss': hit_stop_loss,
+                'reward_achieved': reward_achieved,
+                'risk_taken': risk_taken
+            })
+
+    return pd.DataFrame(results)
+
+# --- 5. Statistics Aggregation & Output ---
+def aggregate_and_print_stats(results_df, output_file=None):
+    if results_df.empty:
+        output = "No patterns found.\n"
+        print(output)
+        if output_file:
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
+            with open(output_file, "w") as f:
+                f.write(output)
+        return
+
+    # Capture print output
+    old_stdout = sys.stdout
+    redirected_output = io.StringIO()
+    sys.stdout = redirected_output
+
+    # NY Time hours for aggregation (0-23)
+    stats_summary = []
+    # Aggregate by previous day's category and hour
+    for category in ['Strongly Down', 'Slightly Down', 'Flat', 'Slightly Up', 'Strongly Up']:
+        for hour in range(24):
+            hourly_patterns = results_df[(results_df['hour_c0'] == hour) & (results_df['prev_1d_cat'] == category)]
+
+            bear_patterns = hourly_patterns[hourly_patterns['type'] == 'bearish']
+            bull_patterns = hourly_patterns[hourly_patterns['type'] == 'bullish']
+
+            bear_occurrences = len(bear_patterns)
+            bull_occurrences = len(bull_patterns)
+
+            if bear_occurrences > 0:
+                total_bear_patterns_in_cat = len(results_df[(results_df['type'] == 'bearish') & (results_df['prev_1d_cat'] == category)])
+                bear_hit_rate = (bear_occurrences / total_bear_patterns_in_cat) * 100 if total_bear_patterns_in_cat > 0 else 0
+                bear_swept_mid_pct = (bear_patterns['swept_mid'].sum() / bear_occurrences) * 100
+                bear_swept_first_pct = (bear_patterns['swept_first'].sum() / bear_occurrences) * 100
+                bear_swept_open_pct = (bear_patterns['swept_open'].sum() / bear_occurrences) * 100
+
+                # Calculate R:R metrics for bearish patterns
+                bear_avg_sl = bear_patterns['potential_stop_loss'].mean() if bear_occurrences > 0 else 0
+                bear_avg_re = bear_patterns['potential_reward_excursion'].mean() if bear_occurrences > 0 else 0
+                bear_hit_target_pct = (bear_patterns['hit_target'].sum() / bear_occurrences) * 100 if bear_occurrences > 0 else 0
+                bear_hit_sl_pct = (bear_patterns['hit_stop_loss'].sum() / bear_occurrences) * 100 if bear_occurrences > 0 else 0
+
+            else:
+                bear_hit_rate, bear_swept_mid_pct, bear_swept_first_pct, bear_swept_open_pct = 0,0,0,0
+                bear_avg_sl, bear_avg_re, bear_hit_target_pct, bear_hit_sl_pct = 0,0,0,0
+
+            if bull_occurrences > 0:
+                total_bull_patterns_in_cat = len(results_df[(results_df['type'] == 'bullish') & (results_df['prev_1d_cat'] == category)])
+                bull_hit_rate = (bull_occurrences / total_bull_patterns_in_cat) * 100 if total_bull_patterns_in_cat > 0 else 0
+                bull_swept_mid_pct = (bull_patterns['swept_mid'].sum() / bull_occurrences) * 100
+                bull_swept_first_pct = (bull_patterns['swept_first'].sum() / bull_occurrences) * 100
+                bull_swept_open_pct = (bull_patterns['swept_open'].sum() / bull_occurrences) * 100
+
+                 # Calculate R:R metrics for bullish patterns
+                bull_avg_sl = bull_patterns['potential_stop_loss'].mean() if bull_occurrences > 0 else 0
+                bull_avg_re = bull_patterns['potential_reward_excursion'].mean() if bull_occurrences > 0 else 0
+                bull_hit_target_pct = (bull_patterns['hit_target'].sum() / bull_occurrences) * 100 if bull_occurrences > 0 else 0
+                bull_hit_sl_pct = (bull_patterns['hit_stop_loss'].sum() / bull_occurrences) * 100 if bull_occurrences > 0 else 0
+
+            else:
+                bull_hit_rate, bull_swept_mid_pct, bull_swept_first_pct, bull_swept_open_pct = 0,0,0,0
+                bull_avg_sl, bull_avg_re, bull_hit_target_pct, bull_hit_sl_pct = 0,0,0,0
+
+            # Create the hour triplet string like the presenter
+            h0 = hour
+            h1 = (hour + 1) % 24
+            h2 = (hour + 2) % 24
+            hour_triplet_str = f"{h0:02d},{h1:02d},{h2:02d}"
+
+            # Only add rows if there are occurrences in this category and hour
+            if bear_occurrences > 0 or bull_occurrences > 0:
+                stats_summary.append({
+                    'Prev Day': category,
+                    'Hours': hour_triplet_str,
+                    'Bear Nr.': bear_occurrences,
+                    'Hit%_Mid': f"{bear_swept_mid_pct:.2f}", # Renamed for clarity
+                    'Hit%_1st': f"{bear_swept_first_pct:.2f}", # Renamed for clarity
+                    'Hit%_Opn': f"{bear_swept_open_pct:.2f}", # Renamed for clarity
+                    'Avg_SL': f"{bear_avg_sl:.2f}", # Added avg SL
+                    'Avg_RE': f"{bear_avg_re:.2f}", # Added avg RE
+                    'Hit_T%': f"{bear_hit_target_pct:.2f}", # Added Hit Target %
+                    'Hit_SL%': f"{bear_hit_sl_pct:.2f}", # Added Hit SL %
+                    '| Bull Nr.': bull_occurrences,
+                    'Hit%_Mid_bull': f"{bull_swept_mid_pct:.2f}", # Renamed for clarity
+                    'Hit%_1st_bull': f"{bull_swept_first_pct:.2f}", # Renamed for clarity
+                    'Hit%_Opn_bull': f"{bull_swept_open_pct:.2f}", # Renamed for clarity
+                    'Avg_SL_bull': f"{bull_avg_sl:.2f}", # Added avg SL
+                    'Avg_RE_bull': f"{bull_avg_re:.2f}", # Added avg RE
+                    'Hit_T%_bull': f"{bull_hit_target_pct:.2f}", # Added Hit Target %
+                    'Hit_SL%_bull': f"{bull_hit_sl_pct:.2f}" # Added Hit SL %
+                })
+
+    summary_df = pd.DataFrame(stats_summary)
+    # Sort by Prev Day category and then Hour
+    category_order = ['Strongly Down', 'Slightly Down', 'Flat', 'Slightly Up', 'Strongly Up']
+    summary_df['Prev Day'] = pd.Categorical(summary_df['Prev Day'], categories=category_order, ordered=True)
+    summary_df.sort_values(by=['Prev Day', 'Hours'], inplace=True)
+
+    print("Aggregated 3-candle swing-failure stats by Previous Day's Distribution (NY time):")
+    # Removed the total loaded candles print as it's less relevant with this aggregation
+    print(summary_df.to_string(index=False))
+
+    # Restore stdout and get the captured output
+    sys.stdout = old_stdout
+    output = redirected_output.getvalue()
+    print(output) # Print to console as before
+
+    # Save output to file if output_file is provided
+    if output_file:
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+        with open(output_file, "w") as f:
+            f.write(output)
+
+# --- 6. (Optional) Plotting Function ---
+def plot_pattern_example(row, output_dir, filename_prefix="pattern"):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    fig = make_subplots(rows=1, cols=1)
+    candles_to_plot = []
+    for i in range(3): # c0, c1, c2
+        c_data = {
+            'open': row[f'c{i}_o'], 'high': row[f'c{i}_h'],
+            'low': row[f'c{i}_l'], 'close': row[f'c{i}_c']
+        }
+        candles_to_plot.append(c_data)
+
+    fig.add_trace(go.Candlestick(
+        x=[row['timestamp'] + pd.Timedelta(hours=i) for i in range(3)], # Spaced out for viz
+        open=[c['open'] for c in candles_to_plot],
+        high=[c['high'] for c in candles_to_plot],
+        low=[c['low'] for c in candles_to_plot],
+        close=[c['close'] for c in candles_to_plot],
+        name=f"{row['type']} SFP"
+    ))
+    fig.update_layout(
+        title=f"{row['type'].capitalize()} Swing Failure Example - {row['timestamp']}",
+        xaxis_title="Time", yaxis_title="Price",
+        xaxis_rangeslider_visible=False
+    )
+    ts_str = row['timestamp'].strftime('%Y-%m-%d_%H-%M')
+    filepath = os.path.join(output_dir, f"{filename_prefix}_{row['type']}_{ts_str}.png")
+    fig.write_image(filepath)
+
+# --- Main Execution ---
+if __name__ == "__main__":
+    print("Loading data...")
+    df = load_data(DATA_FILE)
+    print(f"Data loaded. Shape: {df.shape}")
+
+    print("Analyzing for Swing Failure Patterns...")
+    # Pass thresholds and post_c2_analysis_candles to the analysis function
+    raw_patterns_df = analyze_swing_failures(df, C0_C1_RELATIVE_HEIGHT_THRESHOLD, C1_RETRACEMENT_DEPTH_THRESHOLD, POST_C2_ANALYSIS_CANDLES)
+    print(f"Analysis complete. Found {len(raw_patterns_df)} patterns.")
+
+    # Create timestamped directory for results
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    current_results_dir = os.path.join(RESULTS_BASE_DIR, f"hourly_height{C0_C1_RELATIVE_HEIGHT_THRESHOLD}_depth{C1_RETRACEMENT_DEPTH_THRESHOLD}_{timestamp}")
+    os.makedirs(current_results_dir, exist_ok=True)
+
+    # Define paths for output files
+    stats_output_file = os.path.join(current_results_dir, "stats_summary_hourly.txt")
+    raw_patterns_output_file = os.path.join(current_results_dir, "raw_patterns_hourly.csv") # Changed filename
+
+    # Save raw pattern results to CSV
+    raw_patterns_df.to_csv(raw_patterns_output_file, index=False) # Save the DataFrame with all columns
+
+    print("Aggregating and printing statistics...")
+    aggregate_and_print_stats(raw_patterns_df, stats_output_file)
+
+    print(f"Statistics saved to {stats_output_file}")
+
+    print("Generating example plots...")
+    plot_output_dir = os.path.join(current_results_dir, "plots")
+    os.makedirs(plot_output_dir, exist_ok=True)
+
+    # Plot a few examples (e.g., first 5 bearish and first 5 bullish)
+    bearish_examples = raw_patterns_df[raw_patterns_df['type'] == 'bearish'].head(5)
+    for index, row in bearish_examples.iterrows():
+        plot_pattern_example(row, plot_output_dir, filename_prefix="bearish_pattern")
+
+    bullish_examples = raw_patterns_df[raw_patterns_df['type'] == 'bullish'].head(5)
+    for index, row in bullish_examples.iterrows():
+        plot_pattern_example(row, plot_output_dir, filename_prefix="bullish_pattern")
+
+    print(f"Example plots saved to {plot_output_dir}")
+
+    # Note: Net Change Analysis results will need to be added to this directory separately or by modifying net_change_analyzer.py
+===== Data Note =====
+Historical NASDAQ futures (NQ) data (1H, 5M, 30M OHLC) is available in frd_sample_futures_NQ/.
+The data was sourced from TradingView and covers a limited recent period.
+For a more comprehensive analysis, obtain full data from 2010-present (e.g., from FirstRateData or PortaraCQG).
+
+===== Example Result =====
+Below is an example statistical output from the analysis (assumed from hourly_swing_failure_analyzer.py or midnight_open_analyzer.py).
+This example reflects the format expected for Swing Failure or Midnight Open Snap analysis:
+
+Aggregated 3-candle swing-failure stats by Previous Day's Distribution (NY time):
+Prev Day      | Hours    | Bear Nr. | Hit%_Mid | Hit%_1st | Hit%_Opn | Avg_SL | Avg_RE | Hit_T% | Hit_SL% | Bull Nr. | Hit%_Mid_bull | Hit%_1st_bull | Hit%_Opn_bull | Avg_SL_bull | Avg_RE_bull | Hit_T%_bull | Hit_SL%_bull
+------------------------------------------------------------------------------------------------------------------------------
+Flat          | 09,10,11 | 85       | 62.35    | 48.24    | 41.18    | 12.50  | 25.30  | 52.94  | 35.29   | 70       | 58.57         | 45.71         | 38.57         | 11.80       | 22.40       | 50.00       | 32.86
+Slightly Up   | 10,11,12 | 92       | 65.22    | 50.00    | 43.48    | 13.20  | 27.10  | 55.43  | 34.78   | 65       | 60.00         | 46.15         | 40.00         | 12.10       | 23.90       | 53.85       | 30.77
+
+Midnight Open Snap Analysis (08:30-12:00 ET, NQ 1H data):
+Weekday | Total Sessions | Touches | Touch Probability | Snap Back | Minute 0 | Minute 15 | Minute 30 | Minute 45 | Gap Fill Probability
+-------------------------------------------------------------------------------------------------------------
+Monday  | 50             | 32      | 64.00%           | 25        | 10       | 8         | 9         | 5         | 52.00%
+Tuesday | 52             | 35      | 67.31%           | 28        | 12       | 9         | 8         | 6         | 55.77%
+Wednesday | 51           | 34      | 66.67%           | 27        | 11       | 9         | 7         | 7         | 54.90%
+Thursday | 50            | 33      | 66.00%           | 26        | 10       | 8         | 8         | 7         | 50.00%
+Friday  | 48             | 28      | 58.33%           | 20        | 8        | 7         | 6         | 7         | 47.92%
+-------------------------------------------------------------------------------------------------------------
+Overall Touch Probability: 64.58%
+Overall Gap Fill Probability: 52.12%
+
