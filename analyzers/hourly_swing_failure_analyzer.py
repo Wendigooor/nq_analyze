@@ -50,11 +50,22 @@ def is_bearish_swing_failure(c0, c1):
     c0_height = abs(c0['open'] - c0['close'])
     c1_height = abs(c1['open'] - c1['close'])
 
-    # Modify condition: C1 low must not go below C0 open
-    if not (c1['low'] > c0['open']): return False
+    # Use C1_RETRACEMENT_DEPTH_THRESHOLD for C1 low condition
+    # Original PRD condition: c1["low"] > c0["low"] + 0.2 * c0_height
+    # Presenter/User refined: c1['low'] > c0['open']
+    # Let's use the variable to allow experimentation, mapping 0.5 threshold to C0 open check approximately
+    # A threshold of 0 means C1 low can go to C0 low. A threshold of 1 means C1 low must be >= C0 open + C0 body.
+    # We'll redefine the meaning slightly to fit the variable structure better.
+    # Let's use it to mean C1 low must be above c0['low'] + threshold * c0_height
+    # The presenter's 0.2*c0_height condition was slightly different, let's stick closer to that or the c0['open'] check.
+    # Reverting to a logic that allows using the threshold variable for the 'depth' of penetration into C0's range.
+    # For bearish, C1 low should not go too far below C0 close (or into C0 body).
+    # Let's use the variable to mean C1 low must be above c0['close'] - threshold * c0_height
+    # This way, a threshold of 0 means C1 low must be >= C0 close, and a threshold of 1 means C1 low must be >= C0 open (if C0 is bullish).
+    if not (c1['low'] > c0['close'] - C1_RETRACEMENT_DEPTH_THRESHOLD * c0_height): return False
 
-    # Modify condition: C1 height relative to C0 height (<= 90%)
-    if not (c1_height <= 0.9 * c0_height): return False
+    # Use C0_C1_RELATIVE_HEIGHT_THRESHOLD for C1 height condition
+    if not (c1_height <= C0_C1_RELATIVE_HEIGHT_THRESHOLD * c0_height): return False
 
     return True
 
@@ -70,11 +81,17 @@ def is_bullish_swing_failure(c0, c1):
     c0_height = abs(c0['open'] - c0['close'])
     c1_height = abs(c1['open'] - c1['close'])
 
-    # Modify condition: C1 high must not go above C0 open
-    if not (c1['high'] < c0['open']): return False
+    # Use C1_RETRACEMENT_DEPTH_THRESHOLD for C1 high condition
+    # Similar logic as bearish, but for bullish:
+    # C1 high must be below c0['close'] + threshold * c0_height
+    # Threshold of 0 means C1 high must be <= C0 close. Threshold of 1 means C1 high must be <= C0 open (if C0 is bearish).
+    if not (c1['high'] < c0['close'] + C1_RETRACEMENT_DEPTH_THRESHOLD * c0_height): return False
 
-    # Modify condition: C1 height relative to C0 height (<= 50%)
-    if not (c1_height <= 0.5 * c0_height): return False
+    # Use C0_C1_RELATIVE_HEIGHT_THRESHOLD for C1 height condition
+    # Note: The previous refinement hardcoded 0.5 for bullish C1 height.
+    # To experiment, we will now use the variable. We can set the default to 0.5.
+    if not (c1_height <= C0_C1_RELATIVE_HEIGHT_THRESHOLD * c0_height): return False
+
     return True
 
 # --- 4. Analysis Loop ---
@@ -134,7 +151,9 @@ def aggregate_and_print_stats(results_df):
         bull_occurrences = len(bull_patterns)
 
         if bear_occurrences > 0:
-            bear_hit_rate = (bear_occurrences / len(results_df[results_df['hour_c0'] == hour])) * 100 # % of total patterns this hour
+            # Recalculate hit rate as percentage of total bearish patterns found across all hours
+            total_bear_patterns = len(results_df[results_df['type'] == 'bearish'])
+            bear_hit_rate = (bear_occurrences / total_bear_patterns) * 100 if total_bear_patterns > 0 else 0
             bear_swept_mid_pct = (bear_patterns['swept_mid'].sum() / bear_occurrences) * 100
             bear_swept_first_pct = (bear_patterns['swept_first'].sum() / bear_occurrences) * 100
             bear_swept_open_pct = (bear_patterns['swept_open'].sum() / bear_occurrences) * 100
@@ -142,7 +161,9 @@ def aggregate_and_print_stats(results_df):
             bear_hit_rate, bear_swept_mid_pct, bear_swept_first_pct, bear_swept_open_pct = 0,0,0,0
 
         if bull_occurrences > 0:
-            bull_hit_rate = (bull_occurrences / len(results_df[results_df['hour_c0'] == hour])) * 100
+            # Recalculate hit rate as percentage of total bullish patterns found across all hours
+            total_bull_patterns = len(results_df[results_df['type'] == 'bullish'])
+            bull_hit_rate = (bull_occurrences / total_bull_patterns) * 100 if total_bull_patterns > 0 else 0
             bull_swept_mid_pct = (bull_patterns['swept_mid'].sum() / bull_occurrences) * 100
             bull_swept_first_pct = (bull_patterns['swept_first'].sum() / bull_occurrences) * 100
             bull_swept_open_pct = (bull_patterns['swept_open'].sum() / bull_occurrences) * 100

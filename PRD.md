@@ -1,7 +1,9 @@
 # PRD: NASDAQ H1 Swing Failure Statistical Analyzer with Cursor
 
-**Version:** 1.0
-**Date:** 2025-05-10
+Based on https://youtu.be/UJ58fe7g91c?si=9jIu6l1WMElvfSBy video
+
+**Version:** 1.1
+**Date:** 2025-05-11
 **Author/User:** 
 
 ## 1. Project Overview
@@ -10,7 +12,7 @@
 To replicate and potentially refine a statistical model for identifying and analyzing "H1 Swing Failure" patterns on historical NASDAQ (QQQ) hourly data. The primary goal is to understand the probabilities of certain price movements following these patterns and to explore how different pattern parameters affect these probabilities.
 
 ### 1.2. Scope
-*   Acquire historical NASDAQ (QQQ) hourly data from 2010 to the present.
+*   Attempt to acquire historical NASDAQ (QQQ) hourly data from 2010 to the present. (Note: yfinance limitations encountered, using provided sample data for analysis).
 *   Implement Python scripts (assisted by Cursor) to:
     *   Define bearish and bullish H1 Swing Failure patterns (3-candle setup).
     *   Iterate through historical data to find these patterns.
@@ -19,6 +21,7 @@ To replicate and potentially refine a statistical model for identifying and anal
     *   Generate example plots of identified patterns.
 *   Use Cursor for code generation, modification, explanation, and debugging.
 *   Experiment with different pattern definition parameters.
+*   **Implement Net Change Analysis as an additional feature.**
 
 ### 1.3. Target User
 A trader/analyst familiar with basic Python and trading concepts, looking to use Cursor to efficiently conduct statistical market studies.
@@ -28,23 +31,24 @@ A trader/analyst familiar with basic Python and trading concepts, looking to use
 ### 2.1. Software
 *   **Cursor IDE:** Installed and configured.
 *   **Python 3.x:** Installed.
-*   **Python Virtual Environment:** Recommended (e.g., `venv_trading_stats`).
+*   **Python Virtual Environment:** Recommended (`venv_trading_stats` created and activated).
 *   **Required Python Libraries:**
-    *   `pandas`
-    *   `numpy`
-    *   `yfinance` (for data scraping)
-    *   `plotly` (for plotting, or `matplotlib`)
-    *   Ensure these are installed in your active virtual environment: `pip install pandas numpy yfinance plotly`
+    *   `pandas` (Installed)
+    *   `numpy` (Installed)
+    *   `yfinance` (Installed - Note: Limitations for historical hourly data)
+    *   `plotly` (Installed)
+    *   `kaleido` (Installed for plotting)
+    *   Ensure these are installed in your active virtual environment: `pip install pandas numpy yfinance plotly kaleido`
 
 ### 2.2. Data
-*   **Source:** NASDAQ 100 hourly data (using QQQ ETF as a proxy via `yfinance`).
-*   **Timespan:** January 1, 2010, to present.
-*   **Format:** CSV file (`nasdaq_h1_2010_present.csv`) with columns: `Timestamp` (NY Time), `Open`, `High`, `Low`, `Close`, `Volume`.
+*   **Source:** Initially planned: NASDAQ 100 hourly data (using QQQ ETF as a proxy via `yfinance`) from January 1, 2010, to present. **Currently using sample hourly data provided in `frd_sample_futures_NQ/NQ_1hour_sample.csv` due to yfinance historical data limitations.**
+*   **Timespan:** Sample data covers a limited recent period. Full analysis requires data from January 1, 2010, to present.
+*   **Format:** CSV file (`nasdaq_h1_2010_present.csv` originally planned, now using `frd_sample_futures_NQ/NQ_1hour_sample.csv`) with columns: `Timestamp` (or `timestamp`), `Open`, `High`, `Low`, `Close`, `Volume`.
 
 ### 2.3. Existing Code Files
-You should have the following files from the previous plan (or similar):
+You should have the following files:
 *   `scrapers/download_ticker_data.py`
-*   `analyzers/hourly_swing_failure_analyzer.py`
+*   `analyzers/hourly_swing_failure_analyzer.py` (Modified to use sample data and refined pattern definitions)
 
 ## 3. Project Setup & Structure in Cursor
 
@@ -55,8 +59,10 @@ NQ_ANALYZE/
 │ └── hourly_swing_failure_analyzer.py
 ├── scrapers/
 │ └── download_ticker_data.py
-├── plots_swing_failures/ (This will be created by the analyzer script)
-├── nasdaq_h1_2010_present.csv (This will be created by the scraper script, in the root or a data/ folder)
+├── frd_sample_futures_NQ/ (Contains sample data)
+│   └── NQ_1hour_sample.csv
+├── plots_swing_failures/ (Created by the analyzer script)
+├── nasdaq_h1_2010_present.csv (Original target data file - currently not used for analysis)
 └── README.md
 └── PRD.md (this file)
 
@@ -65,72 +71,29 @@ NQ_ANALYZE/
 1.  Launch Cursor.
 2.  Open the `NQ_ANALYZE` folder as your project workspace.
 
-## 4. Core Analysis Workflow with Cursor
+## 4. Core Analysis Workflow with Cursor (Completed using sample data)
 
 ### 4.1. Step 1: Data Acquisition (Running `download_ticker_data.py`)
 
-1.  **Open `scrapers/download_ticker_data.py` in Cursor.**
-2.  **Review the Code with Cursor:**
-    *   Highlight the `yf.download(...)` line.
-    *   Ask Cursor (Ctrl+K or Cmd+K): `"Explain this yfinance download function and its parameters, specifically 'interval'."`
-    *   Ask Cursor: `"How can I ensure the downloaded data's timestamp is in America/New_York timezone?"` (The script should already handle this or you can ask Cursor to add it).
-3.  **Run the Script using Cursor's Terminal:**
-    *   Open the integrated terminal (Ctrl+` or Cmd+`).
-    *   Ensure your virtual environment is activated.
-    *   Navigate to the `NQ_ANALYZE` root directory if not already there.
-    *   Run: `python scrapers/download_ticker_data.py`
-4.  **Verify Output:**
-    *   Check that `nasdaq_h1_2010_present.csv` is created in the project root (or specified location).
-    *   Open the CSV in Cursor or a spreadsheet program to briefly inspect the data.
+*   Attempted to use `scrapers/download_ticker_data.py` to acquire historical data from 2010. Encountered limitations with `yfinance` for the requested historical depth of hourly data.
+*   **Proceeded with using provided sample hourly data located in `frd_sample_futures_NQ/NQ_1hour_sample.csv`.**
 
 ### 4.2. Step 2: Swing Failure Analysis (Running `analyzers/hourly_swing_failure_analyzer.py`)
 
-1.  **Open `analyzers/hourly_swing_failure_analyzer.py` in Cursor.**
-2.  **Understand Key Functions with Cursor:**
-    *   Highlight the `is_bearish_swing_failure` function.
-    *   Ask Cursor: `"Explain each condition in this function for identifying a bearish swing failure."`
-    *   Do the same for `is_bullish_swing_failure`.
-    *   Highlight the `analyze_swing_failures` function.
-    *   Ask Cursor: `"Explain how this function iterates through the data and what 'swept_mid', 'swept_first', and 'swept_open' represent."`
-    *   Highlight the `aggregate_and_print_stats` function.
-    *   Ask Cursor: `"Explain how the hourly aggregation works and how the hit rates are calculated."`
-3.  **Run the Analysis Script:**
-    *   In Cursor's terminal (ensure venv is active):
-        `python analyzers/hourly_swing_failure_analyzer.py`
-4.  **Review Output:**
-    *   **Console Table:** Observe the printed statistical table. Compare its structure to the presenter's.
-    *   **Plots:** Check the `plots_swing_failures/` directory for generated PNG images of example patterns. Open them to visually verify the pattern detection.
+*   Successfully ran the `analyzers/hourly_swing_failure_analyzer.py` script using the sample data.
+*   The script produced the statistical summary table and generated example plots in the `plots_swing_failures/` directory.
 
 ### 4.3. Step 3: Refining Pattern Definitions with Cursor
 
-This is where you match the presenter's specific nuances or explore your own.
-
-1.  **Focus on `is_bearish_swing_failure` and `is_bullish_swing_failure` functions.**
-2.  **Presenter's Conditions (from video):**
-    *   **Bearish C1 Low:** `c1["low"] > c0["low"] + 0.2 * c0_height` (C1 low doesn't reach below 20% from C0 low, effectively meaning it doesn't reach the C0 *open* if C0 was purely body).
-    *   **Bullish C1 High:** `c1["high"] < c0["high"] - 0.5 * c0_height` (C1 high doesn't reach above 50% from C0 high, if C0 was purely body).
-    *   **C1 Height:** `c1_height <= 0.9 * c0_height` (or sometimes mentioned 0.5).
-3.  **Example Cursor Prompts for Modification:**
-    *   Select the existing condition for C1 low in `is_bearish_swing_failure`.
-    *   Ask Cursor (Ctrl+L for chat, or select and Ctrl+K for edit): `"Modify this condition. For a bearish swing failure, I want to ensure that the low of candle c1 (c1['low']) does not go below the open of candle c0 (c0['open']). Also, add a condition that the height of c1 (abs(c1['open'] - c1['close'])) must be less than or equal to 90% of the height of c0 (abs(c0['open'] - c0['close']))." `
-    *   Similarly for bullish: `"Modify the conditions for 'is_bullish_swing_failure'. I want to ensure c1['high'] does not go above c0['open']. Also, ensure c1's height is no more than 50% of c0's height."`
-    *   After modifications, re-run the analyzer script to see how statistics change.
+*   Successfully refined the `is_bearish_swing_failure` and `is_bullish_swing_failure` functions based on the specific conditions mentioned in this section and the user's instructions.
 
 ### 4.4. Step 4: Refining Statistical Aggregation with Cursor (Optional)
 
-*   If the output table's "Hit%" calculation is different from the presenter's.
-*   Ask Cursor (referencing the `aggregate_and_print_stats` function): `"Modify the 'bear_hit_rate' and 'bull_hit_rate' calculation. Instead of a percentage of total patterns for that hour, calculate it as a percentage of the total number of bearish (or bullish) patterns found across all hours."` (This might not be what the presenter actually did, his "Hit%" seemed low like a raw count/percentage of overall occurrences). Or: `"How would I calculate the 'Hit%' as the number of SFP occurrences for that hour divided by the total number of 3-candle sequences possible for that hour across the entire dataset?"`
+*   Successfully modified the `aggregate_and_print_stats` function to calculate the 'Hit%' as a percentage of the total number of bearish (or bullish) patterns found across all hours, as requested.
 
 ### 4.5. Step 5: Debugging with Cursor
 
-*   **Problem Indication:** Cursor often shows squiggly lines or indicators for potential problems (like the "2 problems in this file" in your `download_ticker_data.py` screenshot).
-*   **Using Cursor for Debugging:**
-    *   Hover over the problem indicator to see the tooltip.
-    *   Select the problematic code.
-    *   Ask Cursor: `"What's wrong with this code?"` or `"Fix this error: [paste error message from terminal]"`.
-    *   If the script runs but gives unexpected results (e.g., zero patterns found):
-        *   Ask Cursor: `"I'm not finding any patterns. Can you help me debug why 'is_bearish_swing_failure' might always be returning False? Let's print the values of c0 and c1 inside the loop when a potential pattern is being checked."`
-        *   Use Cursor's "Debug" feature (if available and configured for your Python interpreter) to step through the code.
+*   Encountered a plotting error related to the `kaleido` library and successfully installed the required library to resolve the issue.
 
 ## 5. Key Parameters for Experimentation (via Cursor prompts)
 
@@ -144,22 +107,23 @@ Use Cursor to easily change and test these values in the pattern definition func
 
 ## 6. Advanced: Asking Cursor for New Features/Analyses
 
-### 6.1. Net Change Analysis (as mentioned by presenter)
-1.  Ask Cursor: `"Create a new Python script. This script should:
-    1. Load the 'nasdaq_h1_2010_present.csv' data.
-    2. Calculate the net percentage change for each hourly candle ( (close - open) / open * 100 ).
-    3. Filter out extreme outliers (e.g., keep data between the 3rd and 97th percentile of net changes).
-    4. Calculate and print overall statistics for the filtered net changes: count, mean, median, standard deviation.
-    5. Calculate and print standard deviation thresholds (e.g., mean +/- 0.5*std, +/- 1.0*std, +/- 1.5*std, +/- 2.0*std).
-    6. Aggregate and print these net change statistics (mean, median, std_dev) per hour of the day (0-23 NY Time)." `
+### 6.1. Net Change Analysis (Next Step)
+
+*   **Plan:** Create a new Python script to perform Net Change Analysis as described below.
+1.  Create a new Python script.
+2.  Load the data (currently using `frd_sample_futures_NQ/NQ_1hour_sample.csv`).
+3.  Calculate the net percentage change for each hourly candle ( `(close - open) / open * 100` ).
+4.  Filter out extreme outliers (e.g., keep data between the 3rd and 97th percentile of net changes).
+5.  Calculate and print overall statistics for the filtered net changes: count, mean, median, standard deviation.
+6.  Aggregate and print these net change statistics (mean, median, std_dev) per hour of the day (0-23 NY Time).
 
 ## 7. Expected Deliverables
 *   A functioning Python environment for the analysis.
-*   `nasdaq_h1_2010_present.csv` containing the historical data.
-*   Modified `analyzers/hourly_swing_failure_analyzer.py` script.
+*   Sample data file `frd_sample_futures_NQ/NQ_1hour_sample.csv` used for analysis.
+*   Modified `analyzers/hourly_swing_failure_analyzer.py` script with refined pattern definitions and statistical aggregation.
 *   Console output of the aggregated H1 Swing Failure statistics table.
 *   PNG images of example patterns in the `plots_swing_failures/` directory.
-*   (Optional) A new script for "Net Change" analysis and its output.
+*   A new script for "Net Change" analysis and its output.
 
 ## 8. Notes & Best Practices for using Cursor
 *   **Be Specific:** The more specific your prompt to Cursor (Ctrl+K or chat), the better the results.
