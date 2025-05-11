@@ -8,10 +8,11 @@ import sys # To capture stdout
 import io # To capture stdout
 
 # --- 1. Configuration ---
-DATA_FILE = "frd_sample_futures_NQ/NQ_1hour_sample.csv"
-OUTPUT_DIR = "plots_swing_failures"
-RESULTS_BASE_DIR = "analysis_results"
-START_ANALYSIS_DATE = "2010-01-01" # Or as desired
+DATA_FILE = "frd_sample_futures_NQ/NQ_30min_sample.csv"
+OUTPUT_DIR = "plots_swing_failures_30min" # Updated output directory
+RESULTS_BASE_DIR = "analysis_results_30min" # Updated results base directory
+START_ANALYSIS_DATE = "2010-01-01" # Or as desired (Note: Sample data is recent)
+# Parameters for Swing Failure Pattern definition (can be experimented with)
 C0_C1_RELATIVE_HEIGHT_THRESHOLD = 0.9 # e.g., C1 height <= 0.9 * C0 height
 C1_RETRACEMENT_DEPTH_THRESHOLD = 0.5 # e.g., C1 must not retrace more than 50% into C0 against expected direction
 
@@ -37,32 +38,33 @@ def load_data(filepath):
     df = df[['open', 'high', 'low', 'close', 'volume']]
     df.dropna(inplace=True)
     df = df[df.index >= pd.to_datetime(START_ANALYSIS_DATE)]
-    df['hour'] = df.index.hour
+    
+    # Calculate features for 30-minute data
+    df['hour'] = df.index.hour # Still useful for hourly grouping of 30min patterns
     df['c0_height'] = abs(df['open'] - df['close'])
 
-    # Calculate net change over previous days
-    # Assuming 24 hours per day for simplicity in hourly data
-    df['prev_1d_change'] = df['close'].pct_change(periods=24) * 100
-    df['prev_2d_change'] = df['close'].pct_change(periods=48) * 100
-    df['prev_3d_change'] = df['close'].pct_change(periods=72) * 100
-
-    # Drop rows with NaN values resulting from pct_change
-    df.dropna(inplace=True)
+    # Calculate net change over previous periods (assuming 48 periods per day for 30min data)
+    # Commenting out previous day analysis for now in lower timeframes
+    # df['prev_1d_change'] = df['close'].pct_change(periods=48) * 100 # 24 hours * 2 (30min in an hour)
+    # df['prev_2d_change'] = df['close'].pct_change(periods=96) * 100 # 48 hours * 2
+    # df['prev_3d_change'] = df['close'].pct_change(periods=144) * 100 # 72 hours * 2
+    
+    # if 'prev_1d_change' in df.columns: df.dropna(inplace=True) # Drop rows with NaN values if calculated
 
     return df
 
-# --- Helper function to categorize daily change ---
-def categorize_change(change_pct):
-    if change_pct < -1.0:
-        return 'Strongly Down'
-    elif -1.0 <= change_pct < -0.1:
-        return 'Slightly Down'
-    elif -0.1 <= change_pct <= 0.1:
-        return 'Flat'
-    elif 0.1 < change_pct <= 1.0:
-        return 'Slightly Up'
-    else:
-        return 'Strongly Up'
+# --- Helper function to categorize daily change (from hourly, not directly used in 30min SFP analysis yet) ---
+# def categorize_change(change_pct):
+#     if change_pct < -1.0:
+#         return 'Strongly Down'
+#     elif -1.0 <= change_pct < -0.1:
+#         return 'Slightly Down'
+#     elif -0.1 <= change_pct <= 0.1:
+#         return 'Flat'
+#     elif 0.1 < change_pct <= 1.0:
+#         return 'Slightly Up'
+#     else:
+#         return 'Strongly Up'
 
 # --- 3. Pattern Definition Functions ---
 def is_bearish_swing_failure(c0, c1, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
@@ -108,7 +110,9 @@ def is_bullish_swing_failure(c0, c1, c0_c1_relative_height_threshold, c1_retrace
 # --- 4. Analysis Loop ---
 def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
     results = [] # To store pattern occurrences and outcomes
-    for i in range(len(df) - 2): # Need 3 candles: c0, c1, c2
+    # Need 3 candles: c0, c1, c2
+    # Iterate up to the third to last candle
+    for i in range(len(df) - 2):
         c0 = df.iloc[i]
         c1 = df.iloc[i+1]
         c2 = df.iloc[i+2]
@@ -116,8 +120,9 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
         # Timestamps for context
         ts0, ts1, ts2 = df.index[i], df.index[i+1], df.index[i+2]
 
-        # Get previous day's change category
-        prev_1d_cat = categorize_change(df['prev_1d_change'].iloc[i])
+        # Previous day's category is not directly applicable to 30min patterns in the same way
+        # We will not include prev_1d_cat in the 30min results for now.
+        # prev_1d_cat = categorize_change(df['prev_1d_change'].iloc[i])
 
         # Bearish SFP
         if is_bearish_swing_failure(c0, c1, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
@@ -126,7 +131,7 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
             swept_open = c2['low'] <= c0['open']
             results.append({
                 'timestamp': ts0, 'type': 'bearish', 'hour_c0': c0['hour'],
-                'prev_1d_cat': prev_1d_cat,
+                # 'prev_1d_cat': prev_1d_cat,
                 'c0_o':c0['open'], 'c0_h':c0['high'], 'c0_l':c0['low'], 'c0_c':c0['close'],
                 'c1_o':c1['open'], 'c1_h':c1['high'], 'c1_l':c1['low'], 'c1_c':c1['close'],
                 'c2_o':c2['open'], 'c2_h':c2['high'], 'c2_l':c2['low'], 'c2_c':c2['close'],
@@ -140,7 +145,7 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
             swept_open = c2['high'] >= c0['open'] # Assuming target is C0 open for bullish too
             results.append({
                 'timestamp': ts0, 'type': 'bullish', 'hour_c0': c0['hour'],
-                'prev_1d_cat': prev_1d_cat,
+                # 'prev_1d_cat': prev_1d_cat,
                 'c0_o':c0['open'], 'c0_h':c0['high'], 'c0_l':c0['low'], 'c0_c':c0['close'],
                 'c1_o':c1['open'], 'c1_h':c1['high'], 'c1_l':c1['low'], 'c1_c':c1['close'],
                 'c2_o':c2['open'], 'c2_h':c2['high'], 'c2_l':c2['low'], 'c2_c':c2['close'],
@@ -166,72 +171,78 @@ def aggregate_and_print_stats(results_df, output_file=None):
 
     # NY Time hours for aggregation (0-23)
     stats_summary = []
-    # Aggregate by previous day's category and hour
-    for category in ['Strongly Down', 'Slightly Down', 'Flat', 'Slightly Up', 'Strongly Up']:
-        for hour in range(24):
-            hourly_patterns = results_df[(results_df['hour_c0'] == hour) & (results_df['prev_1d_cat'] == category)]
+    # Aggregate by hour
+    # Previous day's category aggregation is removed for 30min analysis for now
+    # for category in ['Strongly Down', 'Slightly Down', 'Flat', 'Slightly Up', 'Strongly Up']:
+    for hour in range(24):
+        # hourly_patterns = results_df[(results_df['hour_c0'] == hour) & (results_df['prev_1d_cat'] == category)]
+        hourly_patterns = results_df[results_df['hour_c0'] == hour]
 
-            bear_patterns = hourly_patterns[hourly_patterns['type'] == 'bearish']
-            bull_patterns = hourly_patterns[hourly_patterns['type'] == 'bullish']
+        bear_patterns = hourly_patterns[hourly_patterns['type'] == 'bearish']
+        bull_patterns = hourly_patterns[hourly_patterns['type'] == 'bullish']
 
-            bear_occurrences = len(bear_patterns)
-            bull_occurrences = len(bull_patterns)
+        bear_occurrences = len(bear_patterns)
+        bull_occurrences = len(bull_patterns)
 
-            # Need total candles for the hour and category to calculate occurrences / total
-            # This requires checking the original dataframe based on hour and category
-            # We'll need to pass the original df to this function or recalculate/store categories for all candles
-            # For simplicity now, let's just report occurrences and hit rates within the found patterns for this category/hour
-            # A more detailed analysis would require accounting for all candles in that category/hour.
+        # For 30min data, total candles per hour will be different
+        # Need original df to calculate occurrences / total candles in that hour
+        # Temporarily removing this part of the metric
+        # bear_total_in_hour = len(df[df['hour']==hour])
+        # bull_total_in_hour = len(df[df['hour']==hour])
 
-            if bear_occurrences > 0:
-                total_bear_patterns_in_cat = len(results_df[(results_df['type'] == 'bearish') & (results_df['prev_1d_cat'] == category)])
-                bear_hit_rate = (bear_occurrences / total_bear_patterns_in_cat) * 100 if total_bear_patterns_in_cat > 0 else 0
-                bear_swept_mid_pct = (bear_patterns['swept_mid'].sum() / bear_occurrences) * 100
-                bear_swept_first_pct = (bear_patterns['swept_first'].sum() / bear_occurrences) * 100
-                bear_swept_open_pct = (bear_patterns['swept_open'].sum() / bear_occurrences) * 100
-            else:
-                bear_hit_rate, bear_swept_mid_pct, bear_swept_first_pct, bear_swept_open_pct = 0,0,0,0
+        if bear_occurrences > 0:
+            # Hit rate as percentage of total bearish patterns found across all hours
+            total_bear_patterns = len(results_df[results_df['type'] == 'bearish'])
+            bear_hit_rate = (bear_occurrences / total_bear_patterns) * 100 if total_bear_patterns > 0 else 0
+            bear_swept_mid_pct = (bear_patterns['swept_mid'].sum() / bear_occurrences) * 100
+            bear_swept_first_pct = (bear_patterns['swept_first'].sum() / bear_occurrences) * 100
+            bear_swept_open_pct = (bear_patterns['swept_open'].sum() / bear_occurrences) * 100
+        else:
+            bear_hit_rate, bear_swept_mid_pct, bear_swept_first_pct, bear_swept_open_pct = 0,0,0,0
 
-            if bull_occurrences > 0:
-                total_bull_patterns_in_cat = len(results_df[(results_df['type'] == 'bullish') & (results_df['prev_1d_cat'] == category)])
-                bull_hit_rate = (bull_occurrences / total_bull_patterns_in_cat) * 100 if total_bull_patterns_in_cat > 0 else 0
-                bull_swept_mid_pct = (bull_patterns['swept_mid'].sum() / bull_occurrences) * 100
-                bull_swept_first_pct = (bull_patterns['swept_first'].sum() / bull_occurrences) * 100
-                bull_swept_open_pct = (bull_patterns['swept_open'].sum() / bull_occurrences) * 100
-            else:
-                bull_hit_rate, bull_swept_mid_pct, bull_swept_first_pct, bull_swept_open_pct = 0,0,0,0
+        if bull_occurrences > 0:
+            # Hit rate as percentage of total bullish patterns found across all hours
+            total_bull_patterns = len(results_df[results_df['type'] == 'bullish'])
+            bull_hit_rate = (bull_occurrences / total_bull_patterns) * 100 if total_bull_patterns > 0 else 0
+            bull_swept_mid_pct = (bull_patterns['swept_mid'].sum() / bull_occurrences) * 100
+            bull_swept_first_pct = (bull_patterns['swept_first'].sum() / bull_occurrences) * 100
+            bull_swept_open_pct = (bull_patterns['swept_open'].sum() / bull_occurrences) * 100
+        else:
+            bull_hit_rate, bull_swept_mid_pct, bull_swept_first_pct, bull_swept_open_pct = 0,0,0,0
 
-            # Create the hour triplet string like the presenter
-            h0 = hour
-            h1 = (hour + 1) % 24
-            h2 = (hour + 2) % 24
-            hour_triplet_str = f"{h0:02d},{h1:02d},{h2:02d}"
+        # Create the hour triplet string - Note: this is still based on C0 hour, not a 30min interval triplet
+        h0 = hour
+        h1 = (hour + 1) % 24 # Still show the hour of C1 and C2 for context, even if it spans across 30min intervals
+        h2 = (hour + 2) % 24
+        hour_triplet_str = f"{h0:02d},{h1:02d},{h2:02d}"
 
-            # Only add rows if there are occurrences in this category and hour
-            if bear_occurrences > 0 or bull_occurrences > 0:
-                stats_summary.append({
-                    'Prev Day': category,
-                    'Hours': hour_triplet_str,
-                    'Bear Nr.': bear_occurrences,
-                    'Hit%': f"{bear_hit_rate:.2f}",
-                    'Mid%': f"{bear_swept_mid_pct:.2f}",
-                    '1st%': f"{bear_swept_first_pct:.2f}",
-                    'Opn%': f"{bear_swept_open_pct:.2f}",
-                    '| Bull Nr.': bull_occurrences,
-                    'Hit%_bull': f"{bull_hit_rate:.2f}",
-                    'Mid%_bull': f"{bull_swept_mid_pct:.2f}",
-                    '1st%_bull': f"{bull_swept_first_pct:.2f}",
-                    'Opn%_bull': f"{bull_swept_open_pct:.2f}"
-                })
+        # Only add rows if there are occurrences in this hour
+        if bear_occurrences > 0 or bull_occurrences > 0:
+            stats_summary.append({
+                # 'Prev Day': category, # Removed for 30min analysis
+                'Hours': hour_triplet_str,
+                'Bear Nr.': bear_occurrences,
+                'Hit%': f"{bear_hit_rate:.2f}",
+                'Mid%': f"{bear_swept_mid_pct:.2f}",
+                '1st%': f"{bear_swept_first_pct:.2f}",
+                'Opn%': f"{bear_swept_open_pct:.2f}",
+                '| Bull Nr.': bull_occurrences,
+                'Hit%_bull': f"{bull_hit_rate:.2f}",
+                'Mid%_bull': f"{bull_swept_mid_pct:.2f}",
+                '1st%_bull': f"{bull_swept_first_pct:.2f}",
+                'Opn%_bull': f"{bull_swept_open_pct:.2f}"
+            })
 
     summary_df = pd.DataFrame(stats_summary)
-    # Sort by Prev Day category and then Hour
-    category_order = ['Strongly Down', 'Slightly Down', 'Flat', 'Slightly Up', 'Strongly Up']
-    summary_df['Prev Day'] = pd.Categorical(summary_df['Prev Day'], categories=category_order, ordered=True)
-    summary_df.sort_values(by=['Prev Day', 'Hours'], inplace=True)
+    # Sort by Hour
+    # category_order = ['Strongly Down', 'Slightly Down', 'Flat', 'Slightly Up', 'Strongly Up']
+    # summary_df['Prev Day'] = pd.Categorical(summary_df['Prev Day'], categories=category_order, ordered=True)
+    # summary_df.sort_values(by=['Prev Day', 'Hours'], inplace=True)
+    summary_df.sort_values(by=['Hours'], inplace=True)
 
-    print("Aggregated 3-candle swing-failure stats by Previous Day's Distribution (NY time):")
-    # Removed the total loaded candles print as it's less relevant with this aggregation
+    print("Aggregated 3-candle swing-failure stats for 30-minute data by Hour (NY time of C0):")
+    # Loaded candles count might not be accurate per hour after filtering, remove for now or get total
+    # print(f"Loaded {len(df)} 30-minute candles")
     print(summary_df.to_string(index=False))
 
     # Restore stdout and get the captured output
@@ -252,6 +263,8 @@ def plot_pattern_example(row, output_dir, filename_prefix="pattern"):
 
     fig = make_subplots(rows=1, cols=1)
     candles_to_plot = []
+    # Need to adjust time spacing for 30min data
+    time_delta = pd.Timedelta(minutes=30)
     for i in range(3): # c0, c1, c2
         c_data = {
             'open': row[f'c{i}_o'], 'high': row[f'c{i}_h'],
@@ -260,7 +273,8 @@ def plot_pattern_example(row, output_dir, filename_prefix="pattern"):
         candles_to_plot.append(c_data)
 
     fig.add_trace(go.Candlestick(
-        x=[row['timestamp'] + pd.Timedelta(hours=i) for i in range(3)], # Spaced out for viz
+        # Adjusted x-axis to space candles by 30 minutes
+        x=[row['timestamp'] + time_delta * i for i in range(3)],
         open=[c['open'] for c in candles_to_plot],
         high=[c['high'] for c in candles_to_plot],
         low=[c['low'] for c in candles_to_plot],
@@ -268,11 +282,11 @@ def plot_pattern_example(row, output_dir, filename_prefix="pattern"):
         name=f"{row['type']} SFP"
     ))
     fig.update_layout(
-        title=f"{row['type'].capitalize()} Swing Failure Example - {row['timestamp']}",
+        title=f"{row['type'].capitalize()} Swing Failure Example (30min) - {row['timestamp']}",
         xaxis_title="Time", yaxis_title="Price",
         xaxis_rangeslider_visible=False
     )
-    ts_str = row['timestamp'].strftime('%Y-%m-%d_%H-%M')
+    ts_str = row['timestamp'].strftime('%Y-%m-%d_%H%M') # Use minute in filename for 30min data
     filepath = os.path.join(output_dir, f"{filename_prefix}_{row['type']}_{ts_str}.png")
     fig.write_image(filepath)
 
@@ -286,7 +300,7 @@ if __name__ == "__main__":
 
     # Create a timestamped directory for this run's results
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-    run_dir_name = f"height{current_c0_c1_height_threshold}_depth{current_c1_retracement_depth_threshold}_{timestamp}"
+    run_dir_name = f"30min_height{current_c0_c1_height_threshold}_depth{current_c1_retracement_depth_threshold}_{timestamp}"
     current_results_dir = os.path.join(RESULTS_BASE_DIR, run_dir_name)
     os.makedirs(current_results_dir, exist_ok=True)
 
@@ -304,7 +318,7 @@ if __name__ == "__main__":
     aggregate_and_print_stats(pattern_results, swing_failure_results_filepath)
 
     # Save the pattern_results DataFrame to a file for later analysis
-    pattern_results_filepath = os.path.join(current_results_dir, "raw_pattern_results.csv")
+    pattern_results_filepath = os.path.join(current_results_dir, "raw_pattern_results_30min.csv")
     pattern_results.to_csv(pattern_results_filepath, index=False)
     print(f"Raw pattern results saved to ./{pattern_results_filepath}")
 
@@ -317,9 +331,7 @@ if __name__ == "__main__":
         bullish_examples = pattern_results[pattern_results['type'] == 'bullish'].head(10)
 
         for idx, row in bearish_examples.iterrows():
-            plot_pattern_example(row, plots_output_dir, "bearish_sfp")
+            plot_pattern_example(row, plots_output_dir, "bearish_sfp_30min")
         for idx, row in bullish_examples.iterrows():
-            plot_pattern_example(row, plots_output_dir, "bullish_sfp")
-        print("Example plots saved.")
-
-    # Note: Net Change Analysis results will need to be added to this directory separately or by modifying net_change_analyzer.py
+            plot_pattern_example(row, plots_output_dir, "bullish_sfp_30min")
+        print("Example plots saved.") 
