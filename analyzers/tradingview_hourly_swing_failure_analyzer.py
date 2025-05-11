@@ -1,55 +1,98 @@
+"""
+TradingView Hourly Swing Failure Pattern Analyzer
+================================================
+
+This script analyzes NASDAQ hourly data from TradingView to identify 
+and analyze swing failure patterns (SFPs). It is adapted from the original 
+hourly_swing_failure_analyzer.py script to handle TradingView's specific
+data format, which includes Unix timestamps in seconds and potentially
+additional PlotCandle columns.
+
+Key features:
+- Loads and processes TradingView hourly data
+- Identifies bearish and bullish swing failure patterns
+- Calculates statistics including hit rates and R:R metrics
+- Groups results by hour and previous day's distribution
+- Generates example plots of identified patterns
+- Saves results in timestamped directories
+
+Data source: TradingView NASDAQ futures (NQ) hourly data
+Date range: 2021-04-30 to 2025-05-09 (as of this version)
+
+Author: [Your Name]
+Version: 1.0
+Date: 2025-05-11
+"""
+
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go # For plotting
-from plotly.subplots import make_subplots # For plotting
-import os # For creating plot directories
-import datetime # For timestamping results
-import sys # To capture stdout
-import io # To capture stdout
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import os
+import datetime
+import sys
+import io
 
 # --- 1. Configuration ---
-DATA_FILE = "frd_sample_futures_NQ/NQ_1hour_sample.csv" # Original FRD data file
-OUTPUT_DIR = "plots_swing_failures"
-RESULTS_BASE_DIR = "analysis_results" # Original results base directory
-START_ANALYSIS_DATE = "2010-01-01" # Original start date for FRD data
-C0_C1_RELATIVE_HEIGHT_THRESHOLD = 0.9 # e.g., C1 height <= 0.9 * C0 height
-C1_RETRACEMENT_DEPTH_THRESHOLD = 0.5 # e.g., C1 must not retrace more than 50% into C0 against expected direction
-POST_C2_ANALYSIS_CANDLES = 5 # Number of candles to look at after C2 for R:R
+DATA_FILE = "tradingview_futures_NQ/CME_MINI_DL_NQ1!, 60, 30 apr 2021 - 11 May 2025.csv"  # TradingView data file
+OUTPUT_DIR = "plots_swing_failures_tv"
+RESULTS_BASE_DIR = "analysis_results_tradingview"  # Separate results directory for TradingView data
+START_ANALYSIS_DATE = "2020-01-01"  # Adjusted to include all data from 2020 onwards
+C0_C1_RELATIVE_HEIGHT_THRESHOLD = 0.9  # e.g., C1 height <= 0.9 * C0 height
+C1_RETRACEMENT_DEPTH_THRESHOLD = 0.5  # e.g., C1 must not retrace more than 50% into C0 against expected direction
+POST_C2_ANALYSIS_CANDLES = 5  # Number of candles to look at after C2 for R:R
 
 # --- 2. Data Loading and Preprocessing ---
 def load_data(filepath):
+    """
+    Load and preprocess the TradingView data file.
+    
+    TradingView data has Unix timestamps in seconds, OHLC columns, and potentially additional
+    PlotCandle columns that we'll filter out.
+    
+    Args:
+        filepath (str): Path to the CSV data file
+        
+    Returns:
+        pd.DataFrame: Processed dataframe with datetime index and required columns
+    """
     df = pd.read_csv(filepath)
+    print(f"CSV loaded. Raw shape: {df.shape}")
     
-    # Adjust column name for timestamp based on the sample data format (FRD format)
-    if 'timestamp' in df.columns:
-        df['Timestamp'] = pd.to_datetime(df['timestamp'])
-        df.drop(columns=['timestamp'], inplace=True)
-    elif 'Timestamp' in df.columns:
-        df['Timestamp'] = pd.to_datetime(df['Timestamp'])
-    elif 'Datetime' in df.columns:
-        df['Timestamp'] = pd.to_datetime(df['Datetime'])
-        df.drop(columns=['Datetime'], inplace=True)
-    else:
-        raise ValueError("Timestamp or Datetime column not found in data file.")
-
-    if not isinstance(df.index, pd.DatetimeIndex):
+    # Process TradingView data format with Unix timestamp
+    if 'time' in df.columns:
+        # Convert Unix timestamp (seconds) to datetime
+        # Note: TradingView uses seconds, not milliseconds
+        df['Timestamp'] = pd.to_datetime(df['time'], unit='s')
+        
+        # Select only the OHLC columns, filtering out PlotCandle columns
+        ohlc_cols = ['open', 'high', 'low', 'close']
+        cols_to_keep = ['Timestamp'] + ohlc_cols
+        
+        # Make sure we have all required columns
+        for col in ohlc_cols:
+            if col not in df.columns:
+                raise ValueError(f"Required column '{col}' not found in TradingView data file.")
+        
+        # Select only the columns we need
+        df = df[cols_to_keep]
+        
+        # Set timestamp as index
         df.set_index('Timestamp', inplace=True)
-
-    # Standardize column names and select relevant columns for FRD data
-    df.rename(columns={'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'}, inplace=True) # Standardize
+        print(f"Date range: {df.index.min()} to {df.index.max()}")
+    else:
+        raise ValueError("Required 'time' column not found in TradingView data file.")
     
-    # Check if volume column exists before selecting
-    required_cols = ['open', 'high', 'low', 'close']
-    if 'volume' in df.columns:
-        required_cols.append('volume')
-    
-    df = df[required_cols]
-    
+    # Clean data
     df.dropna(inplace=True)
+    
+    # Filter by start date
     df = df[df.index >= pd.to_datetime(START_ANALYSIS_DATE)]
+    
+    # Add derived columns
     df['hour'] = df.index.hour
     df['c0_height'] = abs(df['open'] - df['close'])
-
+    
     # Calculate net change over previous days
     # Assuming 24 hours per day for simplicity in hourly data
     df['prev_1d_change'] = df['close'].pct_change(periods=24) * 100
@@ -58,11 +101,20 @@ def load_data(filepath):
 
     # Drop rows with NaN values resulting from pct_change
     df.dropna(inplace=True)
-
+    
     return df
 
 # --- Helper function to categorize daily change ---
 def categorize_change(change_pct):
+    """
+    Categorize percentage change into descriptive categories.
+    
+    Args:
+        change_pct (float): Percentage change value
+        
+    Returns:
+        str: Category label for the change
+    """
     if change_pct < -1.0:
         return 'Strongly Down'
     elif -1.0 <= change_pct < -0.1:
@@ -135,8 +187,8 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
         # --- Calculate R:R related metrics ---
         potential_stop_loss = None
         potential_reward_excursion = None
-        hit_reward_target = False # Did price reach a simple target (e.g., C0 open)?
-        hit_stop_loss = False # Did price hit the stop loss before the reward target?
+        hit_reward_target = False
+        hit_stop_loss = False
         reward_achieved = 0.0
         risk_taken = 0.0
 
@@ -155,40 +207,34 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
                 potential_reward_excursion = c2['close'] - min_low_after_c2 if c2['close'] > min_low_after_c2 else 0
 
                 # Check if a simple target (e.g., C0 open) was hit before stop loss (C1 high)
-                # This is a simplified check. A more accurate check would involve iterating candle by candle.
                 target_price = c0['open']
                 stop_loss_price = c1['high']
 
                 # Check if target was hit
                 if any(subsequent_candles['low'] <= target_price):
-                     hit_reward_target = True
+                    hit_reward_target = True
                 else:
                     hit_reward_target = False
 
                 # Check if stop loss was hit
                 if any(subsequent_candles['high'] >= stop_loss_price):
-                     hit_stop_loss = True
+                    hit_stop_loss = True
                 else:
                     hit_stop_loss = False
 
-                 # Calculate reward achieved and risk taken based on which level was hit first
+                # Calculate reward achieved and risk taken
                 reward_achieved = 0.0
                 risk_taken = 0.0
-                # A more accurate check would involve iterating candle by candle to see which was hit first
-                # For now, a simplified approach:
                 if hit_reward_target and not hit_stop_loss:
                     reward_achieved = abs(target_price - c2['close'])
                     risk_taken = abs(c2['close'] - stop_loss_price)
                 elif hit_stop_loss and not hit_reward_target:
-                     reward_achieved = 0.0
-                     risk_taken = abs(c2['close'] - stop_loss_price)
+                    reward_achieved = 0.0
+                    risk_taken = abs(c2['close'] - stop_loss_price)
                 elif hit_reward_target and hit_stop_loss:
-                     # If both hit, determine which one would be hit first based on price levels
-                     # This is a simplification and a more robust method would involve candle-by-candle check
-                     # For now, as a tie-breaker, assume stop loss if both are touched within the window
-                     reward_achieved = 0.0
-                     risk_taken = abs(c2['close'] - stop_loss_price)
-
+                    # If both hit, default to stop loss for simplification
+                    reward_achieved = 0.0
+                    risk_taken = abs(c2['close'] - stop_loss_price)
 
             results.append({
                 'timestamp': ts0,
@@ -203,7 +249,7 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
                 'swept_open': swept_open,
                 'potential_stop_loss': potential_stop_loss,
                 'potential_reward_excursion': potential_reward_excursion,
-                'hit_target': hit_reward_target, # Use hit_target for consistency with cross-timeframe
+                'hit_target': hit_reward_target,
                 'hit_stop_loss': hit_stop_loss,
                 'reward_achieved': reward_achieved,
                 'risk_taken': risk_taken
@@ -213,7 +259,7 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
         if is_bullish_swing_failure(c0, c1, c0_c1_relative_height_threshold, c1_retracement_depth_threshold):
             swept_mid = c2['high'] >= c1['high']
             swept_first = c2['high'] >= c0['high']
-            swept_open = c2['high'] >= c0['open'] # Assuming target is C0 open for bullish too
+            swept_open = c2['high'] >= c0['open']
 
             # Calculate potential Stop Loss (distance from C2 close to C1 low)
             potential_stop_loss = c2['close'] - c1['low'] if c2['close'] > c1['low'] else 0
@@ -239,24 +285,19 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
                 else:
                     hit_stop_loss = False
 
-                 # Calculate reward achieved and risk taken based on which level was hit first
+                # Calculate reward achieved and risk taken
                 reward_achieved = 0.0
                 risk_taken = 0.0
-                # A more accurate check would involve iterating candle by candle to see which was hit first
-                # For now, a simplified approach:
                 if hit_reward_target and not hit_stop_loss:
                     reward_achieved = abs(target_price - c2['close'])
                     risk_taken = abs(c2['close'] - stop_loss_price)
                 elif hit_stop_loss and not hit_reward_target:
-                     reward_achieved = 0.0
-                     risk_taken = abs(c2['close'] - stop_loss_price)
+                    reward_achieved = 0.0
+                    risk_taken = abs(c2['close'] - stop_loss_price)
                 elif hit_reward_target and hit_stop_loss:
-                     # If both hit, determine which one would be hit first based on price levels
-                     # This is a simplification and a more robust method would involve candle-by-candle check
-                     # For now, as a tie-breaker, assume stop loss if both are touched within the window
-                     reward_achieved = 0.0
-                     risk_taken = abs(c2['close'] - stop_loss_price)
-
+                    # If both hit, default to stop loss for simplification
+                    reward_achieved = 0.0
+                    risk_taken = abs(c2['close'] - stop_loss_price)
 
             results.append({
                 'timestamp': ts0,
@@ -271,7 +312,7 @@ def analyze_swing_failures(df, c0_c1_relative_height_threshold, c1_retracement_d
                 'swept_open': swept_open,
                 'potential_stop_loss': potential_stop_loss,
                 'potential_reward_excursion': potential_reward_excursion,
-                'hit_target': hit_reward_target, # Use hit_target for consistency with cross-timeframe
+                'hit_target': hit_reward_target,
                 'hit_stop_loss': hit_stop_loss,
                 'reward_achieved': reward_achieved,
                 'risk_taken': risk_taken
@@ -295,9 +336,8 @@ def aggregate_and_print_stats(results_df, output_file=None):
     redirected_output = io.StringIO()
     sys.stdout = redirected_output
 
-    # NY Time hours for aggregation (0-23)
-    stats_summary = []
     # Aggregate by previous day's category and hour
+    stats_summary = []
     for category in ['Strongly Down', 'Slightly Down', 'Flat', 'Slightly Up', 'Strongly Up']:
         for hour in range(24):
             hourly_patterns = results_df[(results_df['hour_c0'] == hour) & (results_df['prev_1d_cat'] == category)]
@@ -315,12 +355,11 @@ def aggregate_and_print_stats(results_df, output_file=None):
                 bear_swept_first_pct = (bear_patterns['swept_first'].sum() / bear_occurrences) * 100
                 bear_swept_open_pct = (bear_patterns['swept_open'].sum() / bear_occurrences) * 100
 
-                # Calculate R:R metrics for bearish patterns
+                # R:R metrics for bearish patterns
                 bear_avg_sl = bear_patterns['potential_stop_loss'].mean() if bear_occurrences > 0 else 0
                 bear_avg_re = bear_patterns['potential_reward_excursion'].mean() if bear_occurrences > 0 else 0
                 bear_hit_target_pct = (bear_patterns['hit_target'].sum() / bear_occurrences) * 100 if bear_occurrences > 0 else 0
                 bear_hit_sl_pct = (bear_patterns['hit_stop_loss'].sum() / bear_occurrences) * 100 if bear_occurrences > 0 else 0
-
             else:
                 bear_hit_rate, bear_swept_mid_pct, bear_swept_first_pct, bear_swept_open_pct = 0,0,0,0
                 bear_avg_sl, bear_avg_re, bear_hit_target_pct, bear_hit_sl_pct = 0,0,0,0
@@ -332,17 +371,16 @@ def aggregate_and_print_stats(results_df, output_file=None):
                 bull_swept_first_pct = (bull_patterns['swept_first'].sum() / bull_occurrences) * 100
                 bull_swept_open_pct = (bull_patterns['swept_open'].sum() / bull_occurrences) * 100
 
-                 # Calculate R:R metrics for bullish patterns
+                # R:R metrics for bullish patterns
                 bull_avg_sl = bull_patterns['potential_stop_loss'].mean() if bull_occurrences > 0 else 0
                 bull_avg_re = bull_patterns['potential_reward_excursion'].mean() if bull_occurrences > 0 else 0
                 bull_hit_target_pct = (bull_patterns['hit_target'].sum() / bull_occurrences) * 100 if bull_occurrences > 0 else 0
                 bull_hit_sl_pct = (bull_patterns['hit_stop_loss'].sum() / bull_occurrences) * 100 if bull_occurrences > 0 else 0
-
             else:
                 bull_hit_rate, bull_swept_mid_pct, bull_swept_first_pct, bull_swept_open_pct = 0,0,0,0
                 bull_avg_sl, bull_avg_re, bull_hit_target_pct, bull_hit_sl_pct = 0,0,0,0
 
-            # Create the hour triplet string like the presenter
+            # Create the hour triplet string
             h0 = hour
             h1 = (hour + 1) % 24
             h2 = (hour + 2) % 24
@@ -354,21 +392,21 @@ def aggregate_and_print_stats(results_df, output_file=None):
                     'Prev Day': category,
                     'Hours': hour_triplet_str,
                     'Bear Nr.': bear_occurrences,
-                    'Hit%_Mid': f"{bear_swept_mid_pct:.2f}", # Renamed for clarity
-                    'Hit%_1st': f"{bear_swept_first_pct:.2f}", # Renamed for clarity
-                    'Hit%_Opn': f"{bear_swept_open_pct:.2f}", # Renamed for clarity
-                    'Avg_SL': f"{bear_avg_sl:.2f}", # Added avg SL
-                    'Avg_RE': f"{bear_avg_re:.2f}", # Added avg RE
-                    'Hit_T%': f"{bear_hit_target_pct:.2f}", # Added Hit Target %
-                    'Hit_SL%': f"{bear_hit_sl_pct:.2f}", # Added Hit SL %
+                    'Hit%_Mid': f"{bear_swept_mid_pct:.2f}",
+                    'Hit%_1st': f"{bear_swept_first_pct:.2f}",
+                    'Hit%_Opn': f"{bear_swept_open_pct:.2f}",
+                    'Avg_SL': f"{bear_avg_sl:.2f}",
+                    'Avg_RE': f"{bear_avg_re:.2f}",
+                    'Hit_T%': f"{bear_hit_target_pct:.2f}",
+                    'Hit_SL%': f"{bear_hit_sl_pct:.2f}",
                     '| Bull Nr.': bull_occurrences,
-                    'Hit%_Mid_bull': f"{bull_swept_mid_pct:.2f}", # Renamed for clarity
-                    'Hit%_1st_bull': f"{bull_swept_first_pct:.2f}", # Renamed for clarity
-                    'Hit%_Opn_bull': f"{bull_swept_open_pct:.2f}", # Renamed for clarity
-                    'Avg_SL_bull': f"{bull_avg_sl:.2f}", # Added avg SL
-                    'Avg_RE_bull': f"{bull_avg_re:.2f}", # Added avg RE
-                    'Hit_T%_bull': f"{bull_hit_target_pct:.2f}", # Added Hit Target %
-                    'Hit_SL%_bull': f"{bull_hit_sl_pct:.2f}" # Added Hit SL %
+                    'Hit%_Mid_bull': f"{bull_swept_mid_pct:.2f}",
+                    'Hit%_1st_bull': f"{bull_swept_first_pct:.2f}",
+                    'Hit%_Opn_bull': f"{bull_swept_open_pct:.2f}",
+                    'Avg_SL_bull': f"{bull_avg_sl:.2f}",
+                    'Avg_RE_bull': f"{bull_avg_re:.2f}",
+                    'Hit_T%_bull': f"{bull_hit_target_pct:.2f}",
+                    'Hit_SL%_bull': f"{bull_hit_sl_pct:.2f}"
                 })
 
     summary_df = pd.DataFrame(stats_summary)
@@ -378,13 +416,13 @@ def aggregate_and_print_stats(results_df, output_file=None):
     summary_df.sort_values(by=['Prev Day', 'Hours'], inplace=True)
 
     print("Aggregated 3-candle swing-failure stats by Previous Day's Distribution (NY time):")
-    # Removed the total loaded candles print as it's less relevant with this aggregation
+    print(f"Total patterns found: {len(results_df)}")
     print(summary_df.to_string(index=False))
 
     # Restore stdout and get the captured output
     sys.stdout = old_stdout
     output = redirected_output.getvalue()
-    print(output) # Print to console as before
+    print(output)
 
     # Save output to file if output_file is provided
     if output_file:
@@ -425,45 +463,50 @@ def plot_pattern_example(row, output_dir, filename_prefix="pattern"):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    print("Loading data...")
+    print("Loading TradingView data...")
     df = load_data(DATA_FILE)
     print(f"Data loaded. Shape: {df.shape}")
 
     print("Analyzing for Swing Failure Patterns...")
-    # Pass thresholds and post_c2_analysis_candles to the analysis function
     raw_patterns_df = analyze_swing_failures(df, C0_C1_RELATIVE_HEIGHT_THRESHOLD, C1_RETRACEMENT_DEPTH_THRESHOLD, POST_C2_ANALYSIS_CANDLES)
     print(f"Analysis complete. Found {len(raw_patterns_df)} patterns.")
 
+    # Create results directories if they don't exist
+    if not os.path.exists(RESULTS_BASE_DIR):
+        os.makedirs(RESULTS_BASE_DIR, exist_ok=True)
+        
     # Create timestamped directory for results
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    current_results_dir = os.path.join(RESULTS_BASE_DIR, f"hourly_height{C0_C1_RELATIVE_HEIGHT_THRESHOLD}_depth{C1_RETRACEMENT_DEPTH_THRESHOLD}_{timestamp}")
+    current_results_dir = os.path.join(RESULTS_BASE_DIR, f"tradingview_hourly_height{C0_C1_RELATIVE_HEIGHT_THRESHOLD}_depth{C1_RETRACEMENT_DEPTH_THRESHOLD}_{timestamp}")
     os.makedirs(current_results_dir, exist_ok=True)
 
     # Define paths for output files
-    stats_output_file = os.path.join(current_results_dir, "stats_summary_hourly.txt")
-    raw_patterns_output_file = os.path.join(current_results_dir, "raw_patterns_hourly.csv") # Changed filename
+    stats_output_file = os.path.join(current_results_dir, "stats_summary_tradingview_hourly.txt")
+    raw_patterns_output_file = os.path.join(current_results_dir, "raw_patterns_tradingview_hourly.csv")
 
-    # Save raw pattern results to CSV
-    raw_patterns_df.to_csv(raw_patterns_output_file, index=False) # Save the DataFrame with all columns
+    # Save raw pattern results to CSV if any found
+    if not raw_patterns_df.empty:
+        raw_patterns_df.to_csv(raw_patterns_output_file, index=False)
 
     print("Aggregating and printing statistics...")
     aggregate_and_print_stats(raw_patterns_df, stats_output_file)
-
     print(f"Statistics saved to {stats_output_file}")
 
-    print("Generating example plots...")
-    plot_output_dir = os.path.join(current_results_dir, "plots")
-    os.makedirs(plot_output_dir, exist_ok=True)
+    # Only attempt to generate plots if patterns were found
+    if not raw_patterns_df.empty:
+        print("Generating example plots...")
+        plot_output_dir = os.path.join(current_results_dir, "plots")
+        os.makedirs(plot_output_dir, exist_ok=True)
 
-    # Plot a few examples (e.g., first 5 bearish and first 5 bullish)
-    bearish_examples = raw_patterns_df[raw_patterns_df['type'] == 'bearish'].head(5)
-    for index, row in bearish_examples.iterrows():
-        plot_pattern_example(row, plot_output_dir, filename_prefix="bearish_pattern")
+        # Plot a few examples (e.g., first 5 bearish and first 5 bullish)
+        bearish_examples = raw_patterns_df[raw_patterns_df['type'] == 'bearish'].head(5)
+        for index, row in bearish_examples.iterrows():
+            plot_pattern_example(row, plot_output_dir, filename_prefix="bearish_pattern")
 
-    bullish_examples = raw_patterns_df[raw_patterns_df['type'] == 'bullish'].head(5)
-    for index, row in bullish_examples.iterrows():
-        plot_pattern_example(row, plot_output_dir, filename_prefix="bullish_pattern")
+        bullish_examples = raw_patterns_df[raw_patterns_df['type'] == 'bullish'].head(5)
+        for index, row in bullish_examples.iterrows():
+            plot_pattern_example(row, plot_output_dir, filename_prefix="bullish_pattern")
 
-    print(f"Example plots saved to {plot_output_dir}")
-
-    # Note: Net Change Analysis results will need to be added to this directory separately or by modifying net_change_analyzer.py
+        print(f"Example plots saved to {plot_output_dir}")
+    else:
+        print("No patterns found. Skipping plot generation.") 
