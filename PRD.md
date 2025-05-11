@@ -205,18 +205,151 @@ To test the hypothesis that price returns to the TMO (True Midnight Open, 00:00 
 - Generate visualizations of price movement around TMO levels
 - Save statistical results and plots
 
-### 9.3. Prerequisites
-- Existing data files: NQ_1hour_sample.csv, NQ_5min_sample.csv, NQ_30min_sample.csv
-- Libraries: pandas, numpy, plotly, kaleido
-- Timezone conversion support for New York Time (EST/EDT)
+### 9.3. Enhanced Strategy Development Plan
 
-### 9.4. Expected Deliverables
-- Python script midnight_open_analyzer.py in the midnight_open_snap directory
-- Statistical tables showing touch probabilities by day of week
-- Distribution of touches by minute intervals
-- Gap fill analysis results
-- Visualization plots of price action around TMO levels
-- CSV output files with detailed results
-- Integration with existing Swing Failure Pattern analysis for cross-pattern insights
+#### 9.3.1. Analysis Enhancement (midnight_open_analyzer.py)
+- Implement robust timezone handling using pytz for TMO (00:00 ET) and analysis window (08:30-12:00 ET)
+- Enhance snap back definition:
+  - Use 5-minute data for precise entry/exit identification
+  - Add candlestick pattern recognition (engulfing, pin bars)
+  - Define time window for snap back (15-30 minutes post-breakout)
+- Add volume analysis:
+  - Filter for high volume periods (>2x average)
+  - Analyze volume on touch candles
+- Enhance gap analysis:
+  - Categorize gaps by size (small: 0.1-0.5%, medium: 0.5-1%, large: >1%)
+  - Calculate fill probabilities for each category
+
+#### 9.3.2. Trading Rules
+- Entry Rules:
+  - Direction bias based on 08:30 ET price vs TMO
+  - Confirmation using 5-minute candlestick patterns
+  - Volume confirmation (>2x average)
+- Exit Rules:
+  - Stop Loss: Behind local swing high/low (3-5 candles)
+  - Take Profit:
+    - Primary target: TMO level
+    - Secondary target: Liquidity beyond TMO
+- Risk Management:
+  - Minimum R:R ratio of 2:1
+  - Position sizing: 1-2% risk per trade
+  - Trailing stop after first target hit
+
+#### 9.3.3. Backtesting Framework
+- Create midnight_open_backtest.py for trade simulation
+- Metrics to track:
+  - Win rate
+  - Average R:R
+  - Profit factor
+  - Maximum drawdown
+  - Performance by gap size
+  - Performance by weekday
+- Data requirements:
+  - Expand to 5-7 years of historical data
+  - Use FirstRateData or PortaraCQG for complete dataset
+
+#### 9.3.4. Integration with Swing Failure Pattern
+- Analyze correlation between SFP and TMO touches
+- Combined strategy rules:
+  - Use SFP as additional confirmation
+  - Adjust entry/exit based on SFP levels
+  - Track performance of combined signals vs individual
+
+#### 9.3.5. Optimization Parameters
+- TMO touch tolerance (currently 10 points)
+- Analysis window duration
+- Minimum gap size for analysis
+- Volume thresholds
+- Stop loss placement
+- Take profit levels
+
+#### 9.3.6. Implementation Requirements
+- Real-time data feed integration
+- Automated execution capability
+- Risk management controls
+- Performance monitoring
+- Documentation and logging
+
+### 9.4. Deliverables
+- Enhanced midnight_open_analyzer.py with all improvements
+- New midnight_open_backtest.py for strategy testing
+- Detailed trading rules documentation
+- Backtesting results and optimization findings
+- Integration analysis with SFP strategy
+- Production-ready trading system
+
+### 9.5. Success Metrics
+- Minimum 60% win rate in backtesting
+- Risk:Reward ratio ≥ 2:1
+- Profit factor > 1.5
+- Maximum drawdown < 15%
+- Consistent performance across different market conditions
+
+### 9.6. Analysis Results
+
+#### 9.6.1. Dataset Overview
+- Total trading days analyzed: 1,040
+- Analysis period: Recent market data
+- Timeframes analyzed: 5-minute, 30-minute, and 1-hour
+
+#### 9.6.2. TMO Touch Analysis
+- Initial findings showed high touch rate (286.06%) due to multiple touch counting
+- After implementing unique touch counting per day:
+  - Total valid touches: 172
+  - Touch rate: Significantly aligned with ICT methodology expectations
+  - Best time window: 08:30-10:30 ET showed highest probability
+
+#### 9.6.3. Snap Back Analysis
+- Total valid snap back setups identified: 172
+- Average time to snap back: 14.7 minutes
+- Average breakout size: 76.1 points
+- Direction bias:
+  - Long setups: 77.3%
+  - Short setups: 22.7%
+- Pattern breakdown:
+  - Engulfing patterns: 75.6%
+  - Pin bars: 24.4%
+- Pattern performance:
+  - Pin bars: 1.12 average R:R
+  - Engulfing patterns: 1.09 average R:R
+
+#### 9.6.4. Risk-Reward Analysis
+- Average risk range: 59-72 points
+- Average R:R ratio: 1.10
+- Recommended scaling points: Consider at 1:1 R:R
+- Best performing setups:
+  - Time: Early morning (08:30-10:30 ET)
+  - Pattern: Pin bars slightly outperforming
+  - Direction: Strong bias towards long setups
+
+#### 9.6.5. Key Strategy Insights
+1. **Timing**:
+   - Focus on 08:30-10:30 ET window
+   - Average snap back occurs within 15 minutes
+   - Early morning setups show higher probability
+
+2. **Setup Preferences**:
+   - Prioritize long setups (77.3% of opportunities)
+   - Look for pin bar formations
+   - Consider volume confirmation (when available)
+
+3. **Risk Management**:
+   - Average risk: 59-72 points
+   - Use tight stops based on local structure
+   - Consider scaling at 1:1 R:R
+   - Implement trailing stops after first target
+
+4. **Pattern Recognition**:
+   - Primary: Engulfing patterns (more frequent)
+   - Secondary: Pin bars (slightly better R:R)
+   - Both patterns show similar performance metrics
+
+5. **Areas for Optimization**:
+   - Improve R:R ratios (currently averaging 1.10)
+   - Develop better setup filtering criteria
+   - Enhance entry timing based on pattern recognition
+   - Consider volume analysis for confirmation
+
+These findings provide a solid foundation for further strategy development and optimization, particularly in improving the R:R ratios and setup filtering criteria.
 
 

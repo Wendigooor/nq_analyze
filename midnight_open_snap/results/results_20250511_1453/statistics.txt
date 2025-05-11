@@ -1,0 +1,15 @@
+Midnight Open Snap Analysis Results
+=================================
+
+Touch Statistics:
+Total trading days analyzed: 1040
+Total touches: 2975
+Overall touch rate: 286.06%
+
+Snap Back Statistics:
+Total snap backs: 172
+Snap back rate: 5.78%
+Average R:R ratio: 1.12
+Trades with 2:1+ R:R: 4.65%
+
+Gap Analysis:

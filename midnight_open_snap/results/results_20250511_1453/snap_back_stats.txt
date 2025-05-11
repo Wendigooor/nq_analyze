@@ -1,0 +1,23 @@
+Snap Back Detailed Statistics
+===========================
+
+Average time to snap back: 14.7 minutes
+Average breakout size: 76.1 points
+
+Direction Breakdown:
+long: 133 (77.3%)
+short: 39 (22.7%)
+
+Pattern Breakdown:
+engulfing: 130 (75.6%)
+pin_bar: 42 (24.4%)
+
+Pattern Performance:
+pin_bar:
+  Avg Risk: 59.2 points
+  Avg Reward: 66.4 points
+  Avg R:R: 1.12
+engulfing:
+  Avg Risk: 72.4 points
+  Avg Reward: 79.3 points
+  Avg R:R: 1.09

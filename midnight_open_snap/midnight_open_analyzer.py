@@ -118,6 +118,10 @@ def analyze_touches_by_time(df_5m, tmo_data):
         day_data = df_5m[df_5m.index.date == date]
         window_data = day_data.between_time(WINDOW_START, WINDOW_END)
         
+        # Track if we've already found a touch for this day
+        day_touched = False
+        first_touch_time = None
+        
         # For each 5-minute candle, check if there was a touch of TMO
         for idx, candle in window_data.iterrows():
             minute = idx.minute
@@ -129,7 +133,9 @@ def analyze_touches_by_time(df_5m, tmo_data):
             # Check touch
             touched = (candle['low'] <= tmo_level + TOLERANCE_POINTS) and (candle['high'] >= tmo_level - TOLERANCE_POINTS)
             
-            if touched:
+            if touched and not day_touched:
+                day_touched = True
+                first_touch_time = idx
                 touches_by_minute[minute_group] += 1
                 results.append({
                     'date': date,
@@ -142,7 +148,23 @@ def analyze_touches_by_time(df_5m, tmo_data):
                     'high': candle['high'],
                     'low': candle['low'],
                     'close': candle['close'],
-                    'touch': True
+                    'touch': True,
+                    'first_touch': True
+                })
+            elif touched:
+                results.append({
+                    'date': date,
+                    'timestamp': idx,
+                    'weekday': idx.day_name(),
+                    'minute': minute,
+                    'minute_group': minute_group,
+                    'tmo': tmo_level,
+                    'open': candle['open'],
+                    'high': candle['high'],
+                    'low': candle['low'],
+                    'close': candle['close'],
+                    'touch': True,
+                    'first_touch': False
                 })
     
     # Create DataFrame with results
@@ -262,349 +284,432 @@ def analyze_touches_by_hour(df_5m, tmo_data):
     
     return hour_stats, market_open_stats, results_df
 
-def analyze_midnight_snap(df_1h, df_5m, df_30m, tmo_data):
-    """Main analysis of Midnight Open Snap pattern"""
-    results = []
-    snap_back_cases = []
-    gap_fill_cases = []
+def identify_candlestick_pattern(candle):
+    """Identify candlestick patterns in a single candle
+    Returns a tuple (pattern_name, pattern_type) where pattern_type is 'bullish' or 'bearish'
+    """
+    body = abs(candle['close'] - candle['open'])
+    upper_wick = candle['high'] - max(candle['open'], candle['close'])
+    lower_wick = min(candle['open'], candle['close']) - candle['low']
+    total_range = candle['high'] - candle['low']
     
-    # Analyze each day with TMO
+    # Pin bar (hammer/shooting star)
+    if total_range > 0:
+        if candle['close'] > candle['open']:  # Bullish
+            if lower_wick > 2 * body and upper_wick < 0.2 * total_range:
+                return ('pin_bar', 'bullish')
+        else:  # Bearish
+            if upper_wick > 2 * body and lower_wick < 0.2 * total_range:
+                return ('pin_bar', 'bearish')
+    
+    # Engulfing pattern (requires previous candle)
+    # This will be checked in analyze_snap_back()
+    
+    return (None, None)
+
+def analyze_volume(df, lookback=20):
+    """Analyze volume relative to recent average
+    Returns a Series with boolean values where True indicates high volume (>2x average)
+    """
+    if 'volume' not in df.columns:
+        print("Warning: Volume data not available")
+        return pd.Series(False, index=df.index)
+    
+    avg_volume = df['volume'].rolling(window=lookback).mean()
+    high_volume = df['volume'] > 2 * avg_volume
+    return high_volume
+
+def analyze_snap_back(df_5m, tmo_data, lookback_minutes=30):
+    """Enhanced snap back analysis using 5-minute data and pattern recognition"""
+    snap_backs = []
+    
     for _, row in tmo_data.iterrows():
         date = row['date']
         tmo_level = row['tmo']
         
-        # Data for analysis
-        day_df_1h = df_1h[df_1h.index.date == date]
-        day_df_5m = df_5m[df_5m.index.date == date]
-        day_df_30m = df_30m[df_30m.index.date == date]
+        # Get data for this day
+        day_data = df_5m[df_5m.index.date == date]
+        window_data = day_data.between_time(WINDOW_START, WINDOW_END)
         
-        # Analysis windows for different timeframes
-        window_1h = day_df_1h.between_time(WINDOW_START, WINDOW_END)
-        window_5m = day_df_5m.between_time(WINDOW_START, WINDOW_END)
-        window_30m = day_df_30m.between_time(WINDOW_START, WINDOW_END)
+        # Track if we've already found a snap back for this day
+        day_snap_back = False
         
-        # Check for data availability
-        if len(window_1h) == 0 or len(window_5m) == 0:
-            continue
+        # Analyze each potential breakout
+        for i in range(1, len(window_data)):
+            current = window_data.iloc[i]
+            previous = window_data.iloc[i-1]
             
-        # Check for TMO touches
-        touches_1h = (window_1h['low'] <= tmo_level + TOLERANCE_POINTS) & (window_1h['high'] >= tmo_level - TOLERANCE_POINTS)
-        touches_5m = (window_5m['low'] <= tmo_level + TOLERANCE_POINTS) & (window_5m['high'] >= tmo_level - TOLERANCE_POINTS)
-        
-        # Check for touch in hourly timeframe
-        touched_1h = touches_1h.any()
-        
-        # Information about first touch (if any)
-        first_touch_time = None
-        first_touch_timeframe = None
-        
-        if touched_1h and touches_1h.sum() > 0:
-            first_touch_time = window_1h[touches_1h].index[0]
-            first_touch_timeframe = "1H"
-        elif touches_5m.any():
-            first_touch_time = window_5m[touches_5m].index[0]
-            first_touch_timeframe = "5M"
-        
-        # Check snap back (false breakout with return)
-        snap_back = False
-        if first_touch_time is not None:
-            # Analyze 5-minute candles after first touch
-            post_touch = window_5m[window_5m.index > first_touch_time].head(3)
-            
-            if len(post_touch) >= 2:
-                # Check if there was a false breakout and return
-                broke_above = (post_touch['high'].iloc[0] > tmo_level + TOLERANCE_POINTS)
-                broke_below = (post_touch['low'].iloc[0] < tmo_level - TOLERANCE_POINTS)
+            if day_snap_back:
+                break
                 
-                returned_above = broke_below and (post_touch['high'].iloc[1] >= tmo_level - TOLERANCE_POINTS)
-                returned_below = broke_above and (post_touch['low'].iloc[1] <= tmo_level + TOLERANCE_POINTS)
-                
-                snap_back = returned_above or returned_below
-                
-                if snap_back:
-                    snap_back_cases.append({
-                        'date': date,
-                        'touch_time': first_touch_time,
-                        'weekday': first_touch_time.day_name(),
-                        'tmo': tmo_level,
-                        'direction': 'up' if returned_above else 'down'
-                    })
-        
-        # Analyze overnight gap and gap fill
-        if len(day_df_1h) > 0:
-            # Get previous day
-            prev_date = pd.Timestamp(date) - pd.Timedelta(days=1)
-            prev_df = df_1h[df_1h.index.date == prev_date.date()]
-            
-            if len(prev_df) > 0:
-                # Get previous day's close and current day's open
-                prev_close = prev_df['close'].iloc[-1]
-                current_open = day_df_1h['open'].iloc[0]
-                
-                # Calculate gap size in percent
-                gap_size_pct = abs(current_open - prev_close) / prev_close * 100
-                
-                # If gap is large enough for analysis
-                if gap_size_pct >= GAP_THRESHOLD_PCT:
-                    # Determine gap direction
-                    gap_direction = 'up' if current_open > prev_close else 'down'
+            # Check for breakout below TMO
+            if current['low'] < tmo_level - TOLERANCE_POINTS:
+                # Look forward for snap back
+                forward_window = window_data.iloc[i:i+6]  # Next 30 minutes
+                if len(forward_window) > 0 and forward_window['high'].max() > tmo_level:
+                    # Found potential snap back, check for confirmation
+                    snap_candle = forward_window[forward_window['high'] > tmo_level].iloc[0]
+                    pattern, pattern_type = identify_candlestick_pattern(snap_candle)
                     
-                    # Check if gap was filled during the day
-                    if gap_direction == 'up':
-                        # For gap up, check if price went down to prev_close level
-                        gap_fill_level = prev_close + (current_open - prev_close) * (1 - GAP_FILL_PCT/100)
-                        gap_filled = (day_df_1h['low'].min() <= gap_fill_level)
-                    else:
-                        # For gap down, check if price went up to prev_close level
-                        gap_fill_level = prev_close - (prev_close - current_open) * (1 - GAP_FILL_PCT/100)
-                        gap_filled = (day_df_1h['high'].max() >= gap_fill_level)
+                    # Check if it's an engulfing pattern
+                    is_engulfing = (
+                        snap_candle['open'] < previous['close'] and
+                        snap_candle['close'] > previous['open']
+                    )
                     
-                    gap_fill_cases.append({
-                        'date': date,
-                        'weekday': pd.Timestamp(date).day_name(),
-                        'prev_close': prev_close,
-                        'open': current_open,
-                        'gap_size_pct': gap_size_pct,
-                        'gap_direction': gap_direction,
-                        'gap_filled': gap_filled,
-                        'gap_fill_level': gap_fill_level
-                    })
+                    if pattern or is_engulfing:
+                        day_snap_back = True
+                        snap_backs.append({
+                            'date': date,
+                            'breakout_time': current.name,
+                            'snap_back_time': snap_candle.name,
+                            'tmo': tmo_level,
+                            'pattern': pattern if pattern else 'engulfing',
+                            'pattern_type': pattern_type if pattern else 'bullish',
+                            'risk': abs(snap_candle['low'] - tmo_level),
+                            'potential_reward': abs(tmo_level - current['low']),
+                            'direction': 'long',
+                            'breakout_size': abs(current['low'] - tmo_level),
+                            'time_to_snap': (snap_candle.name - current.name).total_seconds() / 60
+                        })
+            
+            # Check for breakout above TMO
+            elif current['high'] > tmo_level + TOLERANCE_POINTS:
+                # Look forward for snap back
+                forward_window = window_data.iloc[i:i+6]  # Next 30 minutes
+                if len(forward_window) > 0 and forward_window['low'].min() < tmo_level:
+                    # Found potential snap back, check for confirmation
+                    snap_candle = forward_window[forward_window['low'] < tmo_level].iloc[0]
+                    pattern, pattern_type = identify_candlestick_pattern(snap_candle)
+                    
+                    # Check if it's an engulfing pattern
+                    is_engulfing = (
+                        snap_candle['open'] > previous['close'] and
+                        snap_candle['close'] < previous['open']
+                    )
+                    
+                    if pattern or is_engulfing:
+                        day_snap_back = True
+                        snap_backs.append({
+                            'date': date,
+                            'breakout_time': current.name,
+                            'snap_back_time': snap_candle.name,
+                            'tmo': tmo_level,
+                            'pattern': pattern if pattern else 'engulfing',
+                            'pattern_type': pattern_type if pattern else 'bearish',
+                            'risk': abs(snap_candle['high'] - tmo_level),
+                            'potential_reward': abs(tmo_level - current['high']),
+                            'direction': 'short',
+                            'breakout_size': abs(current['high'] - tmo_level),
+                            'time_to_snap': (snap_candle.name - current.name).total_seconds() / 60
+                        })
+    
+    # Convert to DataFrame
+    snap_backs_df = pd.DataFrame(snap_backs)
+    if not snap_backs_df.empty:
+        snap_backs_df.to_csv(os.path.join(result_dir, 'snap_backs.csv'), index=False)
         
-        # Add result for current day
-        results.append({
-            'date': date,
-            'weekday': first_touch_time.day_name() if first_touch_time else pd.Timestamp(date).day_name(),
-            'touch': first_touch_time is not None,
-            'touch_time': first_touch_time,
-            'touch_timeframe': first_touch_timeframe,
-            'snap_back': snap_back,
-            'tmo': tmo_level
-        })
+        # Calculate additional statistics
+        snap_stats = {
+            'avg_time_to_snap': snap_backs_df['time_to_snap'].mean(),
+            'avg_breakout_size': snap_backs_df['breakout_size'].mean(),
+            'direction_breakdown': snap_backs_df['direction'].value_counts().to_dict(),
+            'pattern_breakdown': snap_backs_df['pattern'].value_counts().to_dict(),
+            'best_patterns': snap_backs_df.groupby('pattern').agg({
+                'potential_reward': 'mean',
+                'risk': 'mean'
+            }).assign(
+                avg_rr=lambda x: x['potential_reward'] / x['risk']
+            ).sort_values('avg_rr', ascending=False).to_dict('index')
+        }
+        
+        # Save snap back statistics
+        with open(os.path.join(result_dir, 'snap_back_stats.txt'), 'w') as f:
+            f.write("Snap Back Detailed Statistics\n")
+            f.write("===========================\n\n")
+            
+            f.write(f"Average time to snap back: {snap_stats['avg_time_to_snap']:.1f} minutes\n")
+            f.write(f"Average breakout size: {snap_stats['avg_breakout_size']:.1f} points\n\n")
+            
+            f.write("Direction Breakdown:\n")
+            for direction, count in snap_stats['direction_breakdown'].items():
+                f.write(f"{direction}: {count} ({count/len(snap_backs_df)*100:.1f}%)\n")
+            
+            f.write("\nPattern Breakdown:\n")
+            for pattern, count in snap_stats['pattern_breakdown'].items():
+                f.write(f"{pattern}: {count} ({count/len(snap_backs_df)*100:.1f}%)\n")
+            
+            f.write("\nPattern Performance:\n")
+            for pattern, stats in snap_stats['best_patterns'].items():
+                f.write(f"{pattern}:\n")
+                f.write(f"  Avg Risk: {stats['risk']:.1f} points\n")
+                f.write(f"  Avg Reward: {stats['potential_reward']:.1f} points\n")
+                f.write(f"  Avg R:R: {stats['avg_rr']:.2f}\n")
     
-    # Create DataFrames with results
-    results_df = pd.DataFrame(results)
-    snap_back_df = pd.DataFrame(snap_back_cases) if snap_back_cases else pd.DataFrame()
-    gap_fill_df = pd.DataFrame(gap_fill_cases) if gap_fill_cases else pd.DataFrame()
-    
-    # Save results to CSV
-    if not results_df.empty:
-        results_df.to_csv(os.path.join(result_dir, 'midnight_snap_results.csv'), index=False)
-    
-    if not snap_back_df.empty:
-        snap_back_df.to_csv(os.path.join(result_dir, 'snap_back_cases.csv'), index=False)
-    
-    if not gap_fill_df.empty:
-        gap_fill_df.to_csv(os.path.join(result_dir, 'gap_fill_cases.csv'), index=False)
-    
-    return results_df, snap_back_df, gap_fill_df
+    return snap_backs_df
 
-def aggregate_statistics(results_df, snap_back_df=None, gap_fill_df=None):
-    """Aggregate statistics by day of week and create summary table"""
-    if results_df.empty:
-        print("No data for statistics aggregation")
-        return None
+def analyze_gaps(df_1h, tmo_data):
+    """Enhanced gap analysis with categorization by size"""
+    gaps = []
     
-    # Aggregate by day of week
-    weekday_stats = results_df.groupby('weekday').agg(
-        total_days=('date', 'count'),
-        touch_count=('touch', 'sum'),
-        snap_back_count=('snap_back', 'sum')
-    ).reset_index()
+    for _, row in tmo_data.iterrows():
+        date = row['date']
+        tmo_level = row['tmo']
+        
+        # Get previous day's close
+        prev_day = df_1h[df_1h.index.date < date].iloc[-1]
+        prev_close = prev_day['close']
+        
+        # Calculate gap percentage
+        gap_pct = abs(tmo_level - prev_close) / prev_close * 100
+        
+        if gap_pct >= 0.1:  # Minimum gap size for analysis
+            # Categorize gap
+            if gap_pct < 0.5:
+                gap_category = 'small'
+            elif gap_pct < 1.0:
+                gap_category = 'medium'
+            else:
+                gap_category = 'large'
+            
+            # Get data for gap fill analysis
+            day_data = df_1h[df_1h.index.date == date]
+            window_data = day_data.between_time(WINDOW_START, WINDOW_END)
+            
+            # Check if gap was filled
+            if tmo_level > prev_close:  # Gap up
+                fill_pct = (tmo_level - window_data['low'].min()) / (tmo_level - prev_close) * 100
+                direction = 'up'
+            else:  # Gap down
+                fill_pct = (window_data['high'].max() - tmo_level) / (prev_close - tmo_level) * 100
+                direction = 'down'
+            
+            gaps.append({
+                'date': date,
+                'tmo': tmo_level,
+                'prev_close': prev_close,
+                'gap_pct': gap_pct,
+                'gap_category': gap_category,
+                'direction': direction,
+                'fill_percentage': fill_pct,
+                'filled': fill_pct >= GAP_FILL_PCT
+            })
     
-    # Calculate percentages
-    weekday_stats['touch_percentage'] = weekday_stats['touch_count'] / weekday_stats['total_days'] * 100
-    weekday_stats['snap_back_percentage'] = weekday_stats['snap_back_count'] / weekday_stats['touch_count'] * 100
+    # Convert to DataFrame
+    gaps_df = pd.DataFrame(gaps)
+    if not gaps_df.empty:
+        gaps_df.to_csv(os.path.join(result_dir, 'gaps.csv'), index=False)
     
-    # Correct order of days of the week
-    weekday_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    weekday_stats['weekday'] = pd.Categorical(weekday_stats['weekday'], categories=weekday_order, ordered=True)
-    weekday_stats = weekday_stats.sort_values('weekday')
+    return gaps_df
+
+def calculate_risk_reward_metrics(snap_backs_df):
+    """Calculate risk-reward metrics for snap back trades"""
+    if snap_backs_df.empty:
+        return {}
     
-    # Gap fill statistics, if available
-    if gap_fill_df is not None and not gap_fill_df.empty:
-        gap_fill_stats = gap_fill_df.groupby('weekday').agg(
-            gap_count=('date', 'count'),
-            gap_filled_count=('gap_filled', 'sum')
+    metrics = {
+        'avg_risk_points': snap_backs_df['risk'].mean(),
+        'avg_potential_reward_points': snap_backs_df['potential_reward'].mean(),
+        'avg_rr_ratio': (snap_backs_df['potential_reward'] / snap_backs_df['risk']).mean(),
+        'trades_with_min_2R': len(snap_backs_df[snap_backs_df['potential_reward'] / snap_backs_df['risk'] >= 2]),
+        'total_trades': len(snap_backs_df),
+        'percent_2R_opportunities': 0
+    }
+    
+    metrics['percent_2R_opportunities'] = (metrics['trades_with_min_2R'] / metrics['total_trades'] * 100) if metrics['total_trades'] > 0 else 0
+    
+    return metrics
+
+def analyze_midnight_snap(df_1h, df_5m, df_30m, tmo_data):
+    """Main analysis function for Midnight Open Snap strategy"""
+    # Analyze touches by time intervals
+    minute_stats, touches_df = analyze_touches_by_time(df_5m, tmo_data)
+    
+    # Analyze touches by hour
+    hour_stats, market_open_stats, hour_results_df = analyze_touches_by_hour(df_5m, tmo_data)
+    
+    # Combine touch results
+    touches_df = pd.concat([touches_df, hour_results_df]).drop_duplicates()
+    
+    # Enhanced snap back analysis
+    snap_backs_df = analyze_snap_back(df_5m, tmo_data)
+    
+    # Enhanced gap analysis
+    gaps_df = analyze_gaps(df_1h, tmo_data)
+    
+    # Calculate risk-reward metrics
+    rr_metrics = calculate_risk_reward_metrics(snap_backs_df)
+    
+    # Analyze volume for touch candles if volume data is available
+    if 'volume' in df_5m.columns:
+        high_volume = analyze_volume(df_5m)
+        touches_df['high_volume'] = high_volume[touches_df.index]
+    
+    # Aggregate all statistics
+    stats = aggregate_statistics(touches_df, snap_backs_df, gaps_df)
+    
+    # Add risk-reward metrics to stats
+    stats.update(rr_metrics)
+    
+    # Save all statistics to file
+    with open(os.path.join(result_dir, 'statistics.txt'), 'w') as f:
+        f.write("Midnight Open Snap Analysis Results\n")
+        f.write("=================================\n\n")
+        
+        f.write("Touch Statistics:\n")
+        f.write(f"Total trading days analyzed: {len(tmo_data)}\n")
+        f.write(f"Total touches: {len(touches_df)}\n")
+        f.write(f"Overall touch rate: {len(touches_df)/len(tmo_data)*100:.2f}%\n\n")
+        
+        if 'volume' in df_5m.columns:
+            high_vol_touches = touches_df['high_volume'].sum()
+            f.write(f"Touches with high volume: {high_vol_touches}\n")
+            f.write(f"High volume touch rate: {high_vol_touches/len(touches_df)*100:.2f}%\n\n")
+        
+        f.write("Snap Back Statistics:\n")
+        f.write(f"Total snap backs: {len(snap_backs_df)}\n")
+        f.write(f"Snap back rate: {len(snap_backs_df)/len(touches_df)*100:.2f}%\n")
+        f.write(f"Average R:R ratio: {rr_metrics['avg_rr_ratio']:.2f}\n")
+        f.write(f"Trades with 2:1+ R:R: {rr_metrics['percent_2R_opportunities']:.2f}%\n\n")
+        
+        f.write("Gap Analysis:\n")
+        if not gaps_df.empty:
+            for category in ['small', 'medium', 'large']:
+                category_gaps = gaps_df[gaps_df['gap_category'] == category]
+                if len(category_gaps) > 0:
+                    filled_rate = len(category_gaps[category_gaps['filled']]) / len(category_gaps) * 100
+                    f.write(f"{category.capitalize()} gaps ({len(category_gaps)}): {filled_rate:.2f}% fill rate\n")
+    
+    return stats, touches_df, snap_backs_df, gaps_df
+
+def aggregate_statistics(touches_df, snap_backs_df=None, gaps_df=None):
+    """Aggregate statistics for touches, snap backs, and gaps"""
+    stats = {}
+    
+    # Touch statistics by weekday
+    if not touches_df.empty:
+        weekday_stats = touches_df.groupby('weekday').agg(
+            total_touches=('date', 'count')
         ).reset_index()
         
-        gap_fill_stats['gap_fill_percentage'] = gap_fill_stats['gap_filled_count'] / gap_fill_stats['gap_count'] * 100
-        gap_fill_stats['weekday'] = pd.Categorical(gap_fill_stats['weekday'], categories=weekday_order, ordered=True)
-        gap_fill_stats = gap_fill_stats.sort_values('weekday')
+        # Calculate total days for each weekday
+        total_days_by_weekday = touches_df['weekday'].value_counts()
+        weekday_stats['touch_rate'] = weekday_stats['total_touches'] / total_days_by_weekday * 100
         
-        # Save gap fill statistics
-        gap_fill_stats.to_csv(os.path.join(result_dir, 'gap_fill_statistics.csv'), index=False)
+        stats['weekday_stats'] = weekday_stats.to_dict('records')
     
-    # Save statistics
-    weekday_stats.to_csv(os.path.join(result_dir, 'weekday_statistics.csv'), index=False)
+    # Snap back statistics
+    if snap_backs_df is not None and not snap_backs_df.empty:
+        snap_stats = {
+            'total_snap_backs': len(snap_backs_df),
+            'snap_back_rate': len(snap_backs_df) / len(touches_df) * 100 if not touches_df.empty else 0,
+            'pattern_breakdown': snap_backs_df['pattern'].value_counts().to_dict(),
+            'avg_risk': snap_backs_df['risk'].mean(),
+            'avg_reward': snap_backs_df['potential_reward'].mean(),
+            'avg_rr': (snap_backs_df['potential_reward'] / snap_backs_df['risk']).mean()
+        }
+        stats['snap_back_stats'] = snap_stats
     
-    # Overall statistics
-    total_days = len(results_df)
-    total_touches = results_df['touch'].sum()
-    total_snap_backs = results_df['snap_back'].sum()
+    # Gap statistics
+    if gaps_df is not None and not gaps_df.empty:
+        gap_stats = {
+            'total_gaps': len(gaps_df),
+            'gap_categories': {
+                category: {
+                    'count': len(category_gaps),
+                    'fill_rate': len(category_gaps[category_gaps['filled']]) / len(category_gaps) * 100
+                }
+                for category, category_gaps in gaps_df.groupby('gap_category')
+            }
+        }
+        stats['gap_stats'] = gap_stats
     
-    overall_touch_pct = total_touches / total_days * 100 if total_days > 0 else 0
-    overall_snap_back_pct = total_snap_backs / total_touches * 100 if total_touches > 0 else 0
-    
-    # Save overall statistics to text file
-    with open(os.path.join(result_dir, 'overall_statistics.txt'), 'w') as f:
-        f.write(f"Midnight Open Snap Overall Statistics\n")
-        f.write(f"Analysis period: {results_df['date'].min()} - {results_df['date'].max()}\n")
-        f.write(f"Total days: {total_days}\n")
-        f.write(f"Total TMO touches: {total_touches} ({overall_touch_pct:.2f}%)\n")
-        f.write(f"Total snap backs: {total_snap_backs} ({overall_snap_back_pct:.2f}% of touches)\n")
-        
-        if gap_fill_df is not None and not gap_fill_df.empty:
-            total_gaps = len(gap_fill_df)
-            total_gap_fills = gap_fill_df['gap_filled'].sum()
-            overall_gap_fill_pct = total_gap_fills / total_gaps * 100 if total_gaps > 0 else 0
-            
-            f.write(f"\nGap Fill Statistics\n")
-            f.write(f"Total gaps ≥{GAP_THRESHOLD_PCT}%: {total_gaps}\n")
-            f.write(f"Filled gaps ≥{GAP_FILL_PCT}%: {total_gap_fills} ({overall_gap_fill_pct:.2f}%)\n")
-    
-    print(f"Overall statistics saved to {os.path.join(result_dir, 'overall_statistics.txt')}")
-    
-    return weekday_stats
+    return stats
 
-def plot_tmo_examples(df_5m, results_df, tmo_data, max_examples=5):
-    """Create plots with examples of TMO touches for different days"""
-    if results_df.empty or not results_df['touch'].any():
-        print("No data for plotting")
+def plot_tmo_examples(df_5m, touches_df, tmo_data, max_examples=5):
+    """Create example plots of TMO touches and snap backs"""
+    if touches_df.empty:
+        print("No examples to plot")
         return
     
-    # Create directory for plots
+    # Get unique dates with touches
+    touch_dates = touches_df['date'].unique()
+    
+    # Select random dates for examples (up to max_examples)
+    example_dates = np.random.choice(touch_dates, size=min(max_examples, len(touch_dates)), replace=False)
+    
+    # Create plots directory
     plots_dir = os.path.join(result_dir, 'plots')
     os.makedirs(plots_dir, exist_ok=True)
     
-    # Select days with TMO touches
-    touch_days = results_df[results_df['touch']].sort_values('date')
-    
-    # Select snap_back cases, if any
-    snap_back_days = results_df[results_df['snap_back']].sort_values('date')
-    
-    # Build plots for regular touches
-    for i, (_, row) in enumerate(touch_days.iterrows()):
-        if i >= max_examples:
-            break
-            
-        date = row['date']
-        tmo_level = row['tmo']
+    for date in example_dates:
+        # Get TMO level for this date
+        tmo_level = tmo_data[tmo_data['date'] == date]['tmo'].iloc[0]
         
-        # Get data for this day in analysis window
-        day_data = df_5m[df_5m.index.date == date].between_time(WINDOW_START, WINDOW_END)
+        # Get data for this day
+        day_data = df_5m[df_5m.index.date == date]
+        window_data = day_data.between_time(WINDOW_START, WINDOW_END)
         
-        if len(day_data) == 0:
+        if len(window_data) == 0:
             continue
         
-        # Create plot
-        fig = go.Figure(data=[go.Candlestick(
-            x=day_data.index,
-            open=day_data['open'],
-            high=day_data['high'],
-            low=day_data['low'],
-            close=day_data['close'],
-            name='Price'
-        )])
+        # Create figure
+        fig = make_subplots(rows=1, cols=1, subplot_titles=[f'TMO Touch Example - {date}'])
         
-        # Add TMO line
-        fig.add_hline(
-            y=tmo_level,
-            line_dash="dash",
-            line_color="blue",
-            annotation_text="TMO",
-            annotation_position="right"
+        # Add candlestick chart
+        fig.add_trace(
+            go.Candlestick(
+                x=window_data.index,
+                open=window_data['open'],
+                high=window_data['high'],
+                low=window_data['low'],
+                close=window_data['close'],
+                name='Price'
+            )
         )
         
-        # Add tolerance zone around TMO
-        fig.add_hline(
-            y=tmo_level + TOLERANCE_POINTS,
-            line_dash="dot",
-            line_color="lightblue",
-            annotation_text=f"+{TOLERANCE_POINTS}",
-            annotation_position="right"
-        )
-        
-        fig.add_hline(
-            y=tmo_level - TOLERANCE_POINTS,
-            line_dash="dot",
-            line_color="lightblue",
-            annotation_text=f"-{TOLERANCE_POINTS}",
-            annotation_position="right"
-        )
-        
-        # Format plot
-        fig.update_layout(
-            title=f"TMO Touch Example - {date} ({row['weekday']})",
-            xaxis_title="Time (NY)",
-            yaxis_title="Price",
-            xaxis_rangeslider_visible=False
-        )
-        
-        # Save plot
-        fig.write_image(os.path.join(plots_dir, f"tmo_touch_{date}.png"))
-        print(f"Created plot for {date}")
-    
-    # Build plots for snap back cases
-    for i, (_, row) in enumerate(snap_back_days.iterrows()):
-        if i >= max_examples:
-            break
-            
-        date = row['date']
-        tmo_level = row['tmo']
-        
-        # Get data for this day in analysis window
-        day_data = df_5m[df_5m.index.date == date].between_time(WINDOW_START, WINDOW_END)
-        
-        if len(day_data) == 0:
-            continue
-        
-        # Create plot
-        fig = go.Figure(data=[go.Candlestick(
-            x=day_data.index,
-            open=day_data['open'],
-            high=day_data['high'],
-            low=day_data['low'],
-            close=day_data['close'],
-            name='Price'
-        )])
-        
-        # Add TMO line
+        # Add TMO level line
         fig.add_hline(
             y=tmo_level,
             line_dash="dash",
             line_color="red",
-            annotation_text="TMO (Snap Back)",
+            annotation_text="TMO",
             annotation_position="right"
         )
         
-        # Add tolerance zone around TMO
+        # Add tolerance bands
         fig.add_hline(
             y=tmo_level + TOLERANCE_POINTS,
             line_dash="dot",
-            line_color="pink",
+            line_color="gray",
             annotation_text=f"+{TOLERANCE_POINTS}",
             annotation_position="right"
         )
-        
         fig.add_hline(
             y=tmo_level - TOLERANCE_POINTS,
             line_dash="dot",
-            line_color="pink",
+            line_color="gray",
             annotation_text=f"-{TOLERANCE_POINTS}",
             annotation_position="right"
         )
         
-        # Format plot
+        # Update layout
         fig.update_layout(
-            title=f"TMO Snap Back Example - {date} ({row['weekday']})",
-            xaxis_title="Time (NY)",
-            yaxis_title="Price",
-            xaxis_rangeslider_visible=False
+            title=f'TMO Touch Example - {date}',
+            xaxis_title='Time',
+            yaxis_title='Price',
+            showlegend=True,
+            height=800
         )
         
         # Save plot
-        fig.write_image(os.path.join(plots_dir, f"tmo_snap_back_{date}.png"))
-        print(f"Created plot for snap back {date}")
+        fig.write_image(os.path.join(plots_dir, f'tmo_touch_example_{date}.png'))
+        
+        # Close figure to free memory
+        fig.data = []
+        
+    print(f"Created {len(example_dates)} example plots in {plots_dir}")
+    return
 
 def plot_hourly_touch_distribution(hour_stats, market_open_stats):
     """Create plot showing TMO touch distribution by hour"""
@@ -702,22 +807,22 @@ def main():
     
     # Full Midnight Open Snap analysis
     print("Performing full Midnight Open Snap analysis...")
-    results_df, snap_back_df, gap_fill_df = analyze_midnight_snap(df_1h, df_5m, df_30m, tmo_data)
+    stats, touches_df, snap_backs_df, gaps_df = analyze_midnight_snap(df_1h, df_5m, df_30m, tmo_data)
     
     # Aggregate statistics
     print("Aggregating statistics...")
-    weekday_stats = aggregate_statistics(results_df, snap_back_df, gap_fill_df)
+    stats = aggregate_statistics(touches_df, snap_backs_df, gaps_df)
     
     # Build example plots
     print("Building example plots of TMO touches...")
-    plot_tmo_examples(df_5m, results_df, tmo_data)
+    plot_tmo_examples(df_5m, touches_df, tmo_data)
     
     print(f"Analysis complete. Results saved in directory {result_dir}")
     
     # Print statistics to console
-    if weekday_stats is not None:
+    if stats:
         print("\nStatistics by day of week:")
-        print(weekday_stats[['weekday', 'total_days', 'touch_count', 'touch_percentage', 'snap_back_count', 'snap_back_percentage']])
+        print(pd.DataFrame(stats['weekday_stats']))
         
         print("\nStatistics by hour:")
         for hour, stats in sorted(hour_stats.items()):
